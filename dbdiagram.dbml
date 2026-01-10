@@ -1,0 +1,372 @@
+// FotoShareAI - PostgreSQL DBML
+// Generated for dbdiagram.io
+
+Table organizations {
+  id uuid [pk]
+  name varchar
+  slug varchar [unique]
+  created_at timestamptz
+}
+
+Table users {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  email varchar [unique]
+  password_hash varchar
+  first_name varchar
+  last_name varchar
+  company_name varchar
+  company_url varchar
+  phone varchar
+  mfa_enabled boolean
+  mfa_method varchar
+  status varchar
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table user_sessions {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  jwt_id varchar [unique]
+  created_at timestamptz
+  expires_at timestamptz
+  revoked_at timestamptz
+}
+
+Table otp_tokens {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  email varchar
+  purpose varchar
+  code_hash varchar
+  expires_at timestamptz
+  consumed_at timestamptz
+  created_at timestamptz
+}
+
+Table workspaces {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  name varchar
+  description varchar
+  slug varchar [unique]
+  studio_type varchar
+  timezone varchar
+  currency varchar
+  color_theme varchar
+  logo_url varchar
+  status varchar
+  icon_type varchar
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table workspace_settings {
+  id uuid [pk]
+  workspace_id uuid [ref: > workspaces.id]
+  photo_gallery boolean
+  qr_sharing boolean
+  download_protection boolean
+  client_comments boolean
+}
+
+Table permissions {
+  id varchar [pk]
+  label varchar
+  description varchar
+  category varchar
+}
+
+Table roles {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  name varchar
+  level varchar
+  description varchar
+  is_system boolean
+  created_at timestamptz
+}
+
+Table role_permissions {
+  role_id uuid [ref: > roles.id]
+  permission_id varchar [ref: > permissions.id]
+
+  indexes {
+    (role_id, permission_id) [unique]
+  }
+}
+
+Table team_members {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  user_id uuid [ref: > users.id]
+  role_id uuid [ref: > roles.id]
+  email varchar
+  first_name varchar
+  last_name varchar
+  phone varchar
+  access_level varchar
+  is_owner boolean
+  joined_at timestamptz
+}
+
+Table workspace_members {
+  id uuid [pk]
+  workspace_id uuid [ref: > workspaces.id]
+  member_id uuid [ref: > team_members.id]
+  role_id uuid [ref: > roles.id]
+  created_at timestamptz
+
+  indexes {
+    (workspace_id, member_id) [unique]
+  }
+}
+
+Table invitations {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  email varchar
+  first_name varchar
+  last_name varchar
+  role_id uuid [ref: > roles.id]
+  access_level varchar
+  status varchar
+  token varchar [unique]
+  sent_at timestamptz
+  expires_at timestamptz
+}
+
+Table invitation_workspaces {
+  invitation_id uuid [ref: > invitations.id]
+  workspace_id uuid [ref: > workspaces.id]
+
+  indexes {
+    (invitation_id, workspace_id) [unique]
+  }
+}
+
+Table events {
+  id uuid [pk]
+  workspace_id uuid [ref: > workspaces.id]
+  title varchar
+  slug varchar
+  date date
+  status varchar
+  description text
+  type varchar
+  cover_url varchar
+  total_photos int
+  total_videos int
+  total_size_bytes bigint
+  branding_id uuid
+  customer_name varchar
+  customer_email varchar
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table event_collections {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  title varchar
+  is_default boolean
+  photo_count int
+  video_count int
+  thumbnail_url varchar
+  created_at timestamptz
+}
+
+Table media_items {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  collection_id uuid [ref: > event_collections.id]
+  type varchar
+  url varchar
+  name varchar
+  size_bytes bigint
+  created_at timestamptz
+}
+
+Table media_comments {
+  id uuid [pk]
+  media_id uuid [ref: > media_items.id]
+  author varchar
+  initials varchar
+  text text
+  status varchar
+  created_at timestamptz
+}
+
+Table media_comment_attachments {
+  id uuid [pk]
+  comment_id uuid [ref: > media_comments.id]
+  name varchar
+  url varchar
+  type varchar
+  size int
+}
+
+Table event_collaborators {
+  event_id uuid [ref: > events.id]
+  member_id uuid [ref: > team_members.id]
+
+  indexes {
+    (event_id, member_id) [unique]
+  }
+}
+
+Table share_settings {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  guest_pin_required boolean
+  selection_pin_required boolean
+  full_pin_required boolean
+  pin_code varchar
+  updated_at timestamptz
+}
+
+Table guest_sessions {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  email varchar
+  created_at timestamptz
+  expires_at timestamptz
+}
+
+Table guest_registry {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  workspace_id uuid [ref: > workspaces.id]
+  name varchar
+  email varchar
+  phone varchar
+  access_date timestamptz
+  download_count int
+}
+
+Table client_sessions {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  email varchar
+  mode varchar
+  created_at timestamptz
+  expires_at timestamptz
+}
+
+Table branding_items {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  name varchar
+  website varchar
+  instagram varchar
+  facebook varchar
+  youtube varchar
+  email varchar
+  contact_number varchar
+  about_us text
+  domain varchar
+  status varchar
+  icon_type varchar
+  logo_url varchar
+  watermark_position varchar
+  details_position varchar
+  logo_opacity int
+  logo_size int
+  brand_opacity int
+  brand_size int
+  updated_at timestamptz
+}
+
+Table subscriptions {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  stripe_customer_id varchar
+  stripe_subscription_id varchar
+  plan_id varchar
+  status varchar
+  current_period_end timestamptz
+  created_at timestamptz
+}
+
+Table invoices {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  stripe_invoice_id varchar
+  amount varchar
+  currency varchar
+  status varchar
+  issued_at timestamptz
+}
+
+Table payment_methods {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  stripe_payment_method_id varchar
+  brand varchar
+  last4 varchar
+  expiry_date varchar
+  cardholder_name varchar
+  is_default boolean
+  billing_street varchar
+  billing_city varchar
+  billing_zip varchar
+  billing_country varchar
+}
+
+Table support_tickets {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  user_id uuid [ref: > users.id]
+  subject varchar
+  category varchar
+  priority varchar
+  status varchar
+  description text
+  steps_to_reproduce text
+  media_name varchar
+  created_at timestamptz
+}
+
+Table ticket_comments {
+  id uuid [pk]
+  ticket_id uuid [ref: > support_tickets.id]
+  author varchar
+  text text
+  is_support boolean
+  created_at timestamptz
+}
+
+Table feature_requests {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  user_id uuid [ref: > users.id]
+  title varchar
+  category varchar
+  priority varchar
+  email varchar
+  description text
+  use_case text
+  created_at timestamptz
+}
+
+Table audit_logs {
+  id uuid [pk]
+  org_id uuid [ref: > organizations.id]
+  actor_user_id uuid [ref: > users.id]
+  action varchar
+  resource_type varchar
+  resource_id uuid
+  diff jsonb
+  created_at timestamptz
+}
+
+// Face embeddings are stored in a vector DB (external). Store metadata references here.
+Table face_embeddings_metadata {
+  id uuid [pk]
+  event_id uuid [ref: > events.id]
+  person_id uuid
+  photo_id uuid [ref: > media_items.id]
+  vector_id varchar
+  created_at timestamptz
+}
