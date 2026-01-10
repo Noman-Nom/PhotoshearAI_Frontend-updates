@@ -1,5 +1,84 @@
 # Authentication and Access (Backend-Oriented, FastAPI)
 
+## Global Conventions (Applies to All Features)
+
+### Auth & Session
+- Auth uses JWT (access token). Tokens are required on protected routes via `Authorization: Bearer <token>`.
+- **Assumption**: Refresh token strategy is TBD (not in frontend).
+
+### Workspace Access via Subdomain
+- Public and client/guest URLs use `slug.fotoshareai.com` where `slug` maps to a workspace `url`/slug.
+- Resolve `slug` to `workspace_id` early (middleware) and attach to request context.
+- Reject unknown slugs with `404` and block inactive workspaces with `403`.
+- Suggested header propagation for internal services: `X-Workspace-Id`, `X-Workspace-Slug`.
+
+### Error Schema
+All API errors should follow a shared envelope:
+```json
+{
+  "error": {
+    "code": "STRING_CODE",
+    "message": "Human readable message",
+    "details": { "field": "optional extra data" }
+  }
+}
+```
+
+### Pagination
+List endpoints support pagination:
+- Query: `page`, `page_size`, optional `sort`, `order`, and `q` for search.
+- Response:
+```json
+{
+  "items": [],
+  "page": 1,
+  "page_size": 20,
+  "total": 0
+}
+```
+
+### Cache Strategy (Redis)
+- Cache read-heavy responses with short TTLs; invalidate on writes.
+- Suggested cache keys:
+  - `dashboard:<workspace_id>`
+  - `analytics:<workspace_id>:<range>`
+  - `calendar:<workspace_id>:<month>`
+  - `events:list:<workspace_id>:<filters_hash>`
+  - `workspaces:list:<user_id>`
+  - `roles:list`
+  - `branding:list:<workspace_id>`
+- TTL guidance:
+  - Dashboard/Analytics: 5–15 min
+  - Calendar: 10–30 min
+  - Lists (events/workspaces/roles/branding): 5–10 min
+- Invalidation triggers:
+  - Event create/update/delete → invalidate `events:*`, `calendar:*`, `dashboard:*`, `analytics:*`
+  - Workspace updates → invalidate `workspaces:*`, `calendar:*`, `dashboard:*`
+  - Role/member updates → invalidate `roles:*`, `workspaces:*`
+  - Branding changes → invalidate `branding:*`
+
+### Audit Logging
+Record mutations in an audit log:
+- Track actor, action, resource type/id, timestamp, and diff.
+- Examples: workspace delete, role change, member removal, billing changes.
+
+### Media Pipeline (S3 + Queue)
+- Upload media directly to S3-compatible storage (local or cloud).
+- After upload, emit `{ upload_id, url, workspace_id, event_id, type }` to a message queue for AI processing.
+- AI processing backend is separate and out of scope for this service.
+
+### Permissions (RBAC)
+- Enforce permission checks at the API layer using role permission IDs.
+- Map endpoint → permission list; deny by default.
+
+### Billing (Stripe)
+- Use Stripe for subscriptions, payment methods, and invoices.
+- Maintain local subscription state mirrored from Stripe webhooks.
+
+### Guest/Client Access
+- Guest/Client access is public-facing and gated by face scan verification.
+- Face scan backend is separate and out of scope for this service.
+
 > Scope: Backend design for login, registration, email OTP verification, password reset, and invitation acceptance.
 > Source of truth: frontend usage in `/mnt/sdb1/Monis/fotoshareai/fotoshareai_frontend`.
 > All backend behaviors are inferred; items marked **Assumption** or **Unknown** are not confirmed by frontend.
@@ -370,7 +449,6 @@ Expected error cases from frontend:
 ## 10. Known Unknowns & Assumptions
 
 ### Unknowns
-- Token strategy (JWT, session cookies, refresh tokens).
 - Email delivery provider and templates.
 - Whether OTP verification is email-scoped or session-scoped.
 
@@ -397,7 +475,6 @@ Expected error cases from frontend:
 - `/team` (studio-level team management)
 
 ### Preconditions & Assumptions
-- Users are authenticated (auth handled elsewhere).
 - Workspace access is determined by user role and membership lists.
 - **Assumption**: Backend enforces permissions and visibility; frontend currently simulates access in localStorage.
 
@@ -658,7 +735,6 @@ Expected errors:
 - Enforce role-based access on all workspace/team endpoints.
 - Prevent removal of owners and system roles.
 - Invitation links should be tokenized (not raw query params).
-- Audit actions (workspace delete, role changes, member removal).
 
 ## 11. Known Unknowns & Assumptions
 
@@ -671,6 +747,160 @@ Expected errors:
 - Backend will align permissions with UI catalog.
 - Backend will compute workspace stats (events count, storage, members) server-side.
 - Backend will provide guest registry endpoints if Guest Data is retained.
+# Settings (Backend-Oriented, FastAPI)
+
+> Scope: Backend design for account settings, security, and billing management.\n> Source of truth: `/mnt/sdb1/Monis/fotoshareai/fotoshareai_frontend`.
+> All backend behaviors are inferred; items marked **Assumption** or **Unknown** are not confirmed by frontend.
+
+## 1. Feature Overview
+
+### Purpose
+- Update user profile (name, company, phone).
+- Change email with OTP verification.
+- Update password or reset via OTP inside settings.
+- Toggle MFA on/off.
+- Manage payment methods, subscription plans, and billing history.
+
+### Entry Points (frontend routes)
+- `/settings` (tabs: profile, security, payment, plans, billing)
+- `/settings?origin=hub` (platform hub layout)
+
+### Preconditions & Assumptions
+- Payment/billing tabs are only shown for owners in the UI.
+- **Assumption**: Backend replaces localStorage usage for payment methods and simulated OTP emails.
+
+## 2. Core Data Models (Pydantic)
+
+### UserProfile
+```py
+class UserProfile(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    email: EmailStr
+    company_name: str | None = None
+    phone: str | None = None
+    mfa_enabled: bool | None = None
+    mfa_method: Literal["Email", "Authenticator", "SMS"] | None = None
+```
+
+### PaymentMethod
+```py
+class BillingAddress(BaseModel):
+    street: str
+    city: str
+    zip: str
+    country: str
+
+class PaymentMethod(BaseModel):
+    id: str
+    brand: Literal["Visa", "Mastercard", "Amex", "Discover", "Generic"]
+    last4: str
+    expiry_date: str
+    cardholder_name: str
+    is_default: bool | None = None
+    billing_address: BillingAddress
+```
+
+### SubscriptionPlan
+```py
+class SubscriptionPlan(BaseModel):
+    id: str
+    name: str
+    price: str
+    interval: Literal["monthly", "yearly"]
+    features: list[str]
+    is_current: bool | None = None
+    is_popular: bool | None = None
+```
+
+### BillingHistoryItem
+```py
+class BillingHistoryItem(BaseModel):
+    id: str
+    date: str
+    amount: str
+    currency: str
+    method: str
+    status: Literal["Paid", "Failed", "Refunded"]
+```
+
+## 3. Backend Endpoints (Proposed)
+
+### Profile
+**GET `/users/me`**\n- Return current user profile.
+
+**PUT `/users/me`**\n- Update profile fields (first name, last name, company, phone).
+
+**POST `/users/me/email-change`**\n- Request email change, send OTP to new email.
+
+**POST `/users/me/email-verify`**\n- Verify email change OTP and update email.
+
+### Password & Security
+**POST `/users/me/password`**\n- Update password (requires current password).
+
+**POST `/users/me/password/otp`**\n- Send OTP for password reset from settings.
+
+**POST `/users/me/password/verify-otp`**\n- Verify OTP and allow reset.
+
+**POST `/users/me/password/reset`**\n- Set new password after OTP verification.
+
+**POST `/users/me/mfa`**\n- Enable or disable MFA.
+\n### Billing & Plans
+**GET `/billing/payment-methods`**\n- List payment methods.
+
+**POST `/billing/payment-methods`**\n- Add a payment method.
+
+**DELETE `/billing/payment-methods/{payment_id}`**\n- Remove a payment method.
+
+**GET `/billing/plans`**\n- List available plans.
+
+**GET `/billing/history`**\n- List billing history.
+
+## 4. Business Rules & Constraints (From UI)
+
+- Email change requires OTP verification (6 digits; UI accepts `000000` bypass).
+- Password update requires current password and matching confirmation.
+- MFA toggle triggers a confirmation step (UI modal).
+- Payment methods require cardholder name, number, expiry, CVV, address (basic validation in UI).
+- Owners only see payment/plans/billing tabs.
+
+## 5. Validation & Constraints
+
+- Email format must match `EMAIL_REGEX`.
+- Card number: min length 13, CVV min length 3, expiry `MM/YY`.
+- Password change: new and confirm must match.
+
+## 6. Storage & Caching (Frontend Signals)
+
+- Payment methods are stored in localStorage key `photmo_payment_methods_v1` in UI.
+- Backend should persist payment methods and billing history in DB.
+
+## 7. Redis Expectations (Assumed)
+
+- OTP keys for email change and password reset:\n  - `settings:otp:email:<userId>`\n  - `settings:otp:password:<userId>`\n- TTL: 5–10 minutes.
+
+## 8. Error Handling
+
+- `400` invalid input (email format, card fields, password mismatch).
+- `401` invalid OTP or current password.
+- `403` billing routes restricted to owners.
+
+## 9. Security Considerations
+
+- Never store full card numbers; tokenize via payment provider.
+- Rate-limit OTP requests.
+- Require re-auth or MFA before sensitive changes (email/password).
+
+## 10. Known Unknowns & Assumptions
+
+### Unknowns
+- Payment provider integration and tokenization flow.
+- Whether MFA supports authenticator or SMS beyond email.
+
+### Assumptions
+- Backend will send OTP via email provider for email/password changes.
+- Billing history is sourced from payment provider webhooks.
 # Events & Galleries (Backend-Oriented, FastAPI)
 
 > Scope: Backend design for event creation, event management, media collections, share links, and client/guest galleries.
@@ -697,7 +927,6 @@ Expected errors:
 - `/guest-access/:eventId` and `/guest-gallery/:eventId` are used in UI but **previously removed by request**; include only if you want guest access enabled.
 
 ### Preconditions & Assumptions
-- User is authenticated and has access to the active workspace.
 - Event is scoped to `workspaceId` and should be filtered by active workspace.
 - Published events are viewable by guests/clients; Draft events are blocked.
 - **Assumption**: Backend replaces localStorage-based `SHARED_EVENTS` and media operations.
@@ -955,7 +1184,6 @@ Frontend uses `shared_events_v2` in localStorage. Backend should persist:
 
 ## 10. Security Considerations
 
-- Enforce event access by workspace membership for internal routes.
 - Use signed URLs or tokenized downloads for media.
 - Gate client/guest gallery access by session tokens.
 - Avoid exposing raw media URLs without authorization.
@@ -989,10 +1217,8 @@ Frontend uses `shared_events_v2` in localStorage. Backend should persist:
 - `/studio-calendar` → Studio calendar (active workspace only)
 
 ### Preconditions & Assumptions
-- User is authenticated.
 - Global calendar is accessible to admin roles in the UI (navigation entry is in the workspace hub tabs).
 - Studio calendar uses the active workspace selection.
-- **Assumption**: Backend will provide event data filtered by user permissions.
 
 ## 2. Core Data Models (Pydantic)
 
@@ -1089,7 +1315,7 @@ class Workspace(BaseModel):
 
 ## 8. Error Handling
 
-- `404` if workspace not found or user not authorized.
+- `404` if workspace not found.
 - `403` if user lacks access to requested workspace.
 - `200` with empty list if no events scheduled.
 
@@ -1105,7 +1331,6 @@ class Workspace(BaseModel):
 - Whether event time and timezone should be modeled (UI only uses date).
 
 ### Assumptions
-- Backend will return only events the user is authorized to see.
 - Backend will include workspace color theme for calendar styling (optional).
 # Branding (Backend-Oriented, FastAPI)
 
@@ -1125,7 +1350,6 @@ class Workspace(BaseModel):
 - `/branding/add` (standalone add page)
 
 ### Preconditions & Assumptions
-- User is authenticated.
 - Branding presets are shared at the workspace or organization level.
 - **Assumption**: Backend will replace localStorage storage `photmo_branding_items_v1`.
 
@@ -1275,7 +1499,6 @@ Backend should persist branding in DB and return URLs for logos if stored extern
 ## 10. Security Considerations
 
 - Validate logo uploads (size/type).
-- Prevent unauthorized updates (workspace/organization ownership).
 - Sanitize URLs for social links to avoid injection.
 
 ## 11. Known Unknowns & Assumptions
@@ -1306,7 +1529,6 @@ Backend should persist branding in DB and return URLs for logos if stored extern
 - `/analytics`
 
 ### Preconditions & Assumptions
-- User is authenticated.
 - Active workspace is selected.
 - **Assumption**: Backend will replace localStorage-driven data used in the UI.
 
@@ -1430,7 +1652,6 @@ class AnalyticsResponse(BaseModel):
 
 ## 9. Security Considerations
 
-- Ensure analytics only exposes data for authorized workspaces.
 - Avoid leaking guest/customer data unless explicitly required.
 
 ## 10. Known Unknowns & Assumptions
@@ -1461,7 +1682,6 @@ class AnalyticsResponse(BaseModel):
 - `/dashboard`
 
 ### Preconditions & Assumptions
-- User is authenticated.
 - Active workspace is selected.
 - **Assumption**: Backend replaces localStorage-derived metrics and simulated ticket data.
 
