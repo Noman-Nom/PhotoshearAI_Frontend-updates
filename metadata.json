@@ -1,0 +1,7 @@
+{
+  "name": "PhotoShareAI: Main Final",
+  "description": "A scalable, production-grade authentication portal featuring Login, Signup, Forgot Password, and a protected Dashboard using React, TypeScript, and Tailwind CSS.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
