@@ -1112,6 +1112,77 @@ class MediaComment(BaseModel):
 **DELETE `/media/{media_id}/comments/{comment_id}`**
 - Remove comment.
 
+## 4.1 Face Search (Vector DB Integration)
+
+> This section reflects your requirement to use a vector database for face embeddings scoped to an event.
+
+### Data Model (Vector DB)
+- Embedding record fields:
+  - `event_id` (string) — scope boundary for search
+  - `person_id` (string) — cluster/group identifier
+  - `photo_id` (string) — media item identifier
+  - `embedding` (vector<float>)
+  - `created_at` (timestamp)
+
+### Core Flows
+1. **Ingest media**: when a photo is uploaded, a face detection pipeline (separate from this backend) extracts face embeddings and writes to the vector DB with `event_id` and `photo_id`.
+2. **Face scan search**: user uploads a face image from the frontend; backend generates embedding and queries the vector DB **within the event scope**; returns all matched `photo_id`s for that event.
+3. **Filter by person**: frontend can request all photos for a specific event, grouped by `person_id`, or request a single `person_id` to return that person’s photos within the event.
+
+### Proposed Endpoints
+
+**POST `/events/{event_id}/faces/search`**  
+Purpose: find matching images within a single event using an uploaded face scan.
+
+Request (multipart/form-data):
+- `file`: image
+- optional `threshold`: float
+- optional `limit`: int
+
+Response (200):
+```json
+{
+  "event_id": "evt_123",
+  "matches": [
+    { "photo_id": "m_1", "score": 0.92 },
+    { "photo_id": "m_9", "score": 0.88 }
+  ]
+}
+```
+
+**GET `/events/{event_id}/faces/{person_id}/media`**  
+Purpose: return all photos for a detected person cluster within the event.
+
+Response (200):
+```json
+{
+  "event_id": "evt_123",
+  "person_id": "p_456",
+  "photo_ids": ["m_1", "m_9", "m_12"]
+}
+```
+
+**POST `/events/{event_id}/faces/assign`**  
+Purpose: manually assign a photo to a person cluster (optional admin tool).
+
+Request:
+```json
+{
+  "photo_id": "m_12",
+  "person_id": "p_456"
+}
+```
+
+Response (200):
+```json
+{ "status": "ASSIGNED" }
+```
+
+### Assumptions / Notes
+- Embedding generation and face detection are handled by a separate service; this backend only stores/query embeddings in the vector DB.
+- All face search queries must be **filtered by `event_id`** to avoid cross-event leakage.
+- The vector DB is not part of transactional DB; treat matches as eventually consistent.
+
 ## 5. Request/Response Examples
 
 ### Create Event
