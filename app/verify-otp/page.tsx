@@ -90,7 +90,7 @@ const VerifyOtpPage: React.FC = () => {
   return (
     <AuthLayout
       title="Verify your email"
-      subtitle={`We've sent a 6-digit verification code to ${pendingUserEmail}. Check your simulated emails.`}
+      subtitle={`We've sent a 6-digit verification code to ${pendingUserEmail}. Check your email inbox.`}
     >
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="flex justify-center gap-2 sm:gap-3">
