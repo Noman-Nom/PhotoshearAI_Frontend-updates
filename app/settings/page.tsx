@@ -43,8 +43,10 @@ import { Modal } from '../../components/ui/Modal';
 import { Switch } from '../../components/ui/Switch';
 import { Select } from '../../components/ui/Select';
 import { SubscriptionPlan, BillingHistoryItem, PaymentMethod } from '../../types';
-import { addSimulatedEmail, SHARED_EVENTS, COUNTRIES } from '../../constants';
+import { SHARED_EVENTS, COUNTRIES } from '../../constants';
 import { formatBytes } from '../../utils/formatters';
+import { api } from '../../utils/api';
+import { mapUserFromApi } from '../../utils/mappers';
 
 type SettingsTab = 'profile' | 'security' | 'payment' | 'plans' | 'billing';
 type PasswordStep = 'UPDATE_FORM' | 'FORGOT_OTP' | 'FORGOT_RESET' | 'SUCCESS';
@@ -146,8 +148,8 @@ const SettingsPage: React.FC = () => {
   // Email Change State
   const [isEmailVerifyOpen, setIsEmailVerifyOpen] = useState(false);
   const [emailOtp, setEmailOtp] = useState(['', '', '', '', '', '']);
-  const [generatedEmailOtp, setGeneratedEmailOtp] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [pendingEmailChange, setPendingEmailChange] = useState<string | null>(null);
 
   // Password Management State
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -158,7 +160,6 @@ const SettingsPage: React.FC = () => {
     confirm: ''
   });
   const [forgotOtp, setForgotOtp] = useState(['', '', '', '', '', '']);
-  const [generatedForgotOtp, setGeneratedForgotOtp] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
@@ -175,6 +176,22 @@ const SettingsPage: React.FC = () => {
     phone: user?.phone || '+1 (555) 000-0000'
   });
 
+  const isOauthUser = useMemo(() => {
+    const status = user?.status?.toLowerCase() || '';
+    return status.includes('oauth') || status.includes('google');
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    setProfileForm({
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      email: pendingEmailChange || user.email || '',
+      companyName: user.companyName || '',
+      phone: user.phone || ''
+    });
+  }, [user, pendingEmailChange]);
+
   const isOwner = useMemo(() => {
     const profile = members.find(m => m.email === user?.email);
     return profile?.isOwner || ['Owner', 'SuperAdmin / Owner'].includes(profile?.role || '');
@@ -189,48 +206,56 @@ const SettingsPage: React.FC = () => {
     };
   }, []);
 
-  const handleSaveProfile = () => {
-    if (profileForm.email !== user?.email) {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedEmailOtp(code);
-      addSimulatedEmail({
-        to: profileForm.email,
-        subject: 'Action Required: Verify your new email',
-        body: `You are attempting to change your account email to ${profileForm.email}. Your verification code is: ${code}.`
-      });
-      setIsEmailVerifyOpen(true);
-      return;
-    }
+  const handleSaveProfile = async () => {
+    setEmailError('');
+    try {
+      const payload = {
+        first_name: profileForm.firstName?.trim() || null,
+        last_name: profileForm.lastName?.trim() || null,
+        company_name: profileForm.companyName?.trim() || null,
+        phone: profileForm.phone?.trim() || null
+      };
+      const profileResp = await api.put('/api/v1/users/me', payload, true);
+      if (profileResp) {
+        updateUserProfile(mapUserFromApi(profileResp));
+      }
 
-    updateUserProfile({
-      firstName: profileForm.firstName,
-      lastName: profileForm.lastName,
-      companyName: profileForm.companyName,
-      phone: profileForm.phone
-    });
-    
-    setSuccessMsg('Profile details updated.');
-    setIsSuccessToast(true);
-    setTimeout(() => setIsSuccessToast(false), 3000);
+      if (profileForm.email !== user?.email) {
+        await api.post('/api/v1/users/me/email-change', { new_email: profileForm.email }, true);
+        setEmailOtp(['', '', '', '', '', '']);
+        setPendingEmailChange(profileForm.email);
+        setIsEmailVerifyOpen(true);
+        return;
+      }
+
+      setSuccessMsg('Profile details updated.');
+      setIsSuccessToast(true);
+      setTimeout(() => setIsSuccessToast(false), 3000);
+    } catch (err: any) {
+      setEmailError(err.message || 'Failed to update profile.');
+    }
   };
 
-  const verifyEmailOtp = () => {
+  const verifyEmailOtp = async () => {
     const code = emailOtp.join('');
-    if (code === generatedEmailOtp || code === '000000') {
-      updateUserProfile({
-        firstName: profileForm.firstName,
-        lastName: profileForm.lastName,
-        email: profileForm.email,
-        companyName: profileForm.companyName,
-        phone: profileForm.phone
-      });
+    if (code.length !== 6) {
+      setEmailError('Invalid verification code.');
+      return;
+    }
+    try {
+      await api.post('/api/v1/users/me/email-verify', { otp: code }, true);
+      const profileResp = await api.get('/api/v1/users/me', true);
+      if (profileResp) {
+        updateUserProfile(mapUserFromApi(profileResp));
+      }
       setIsEmailVerifyOpen(false);
       setEmailOtp(['', '', '', '', '', '']);
+      setPendingEmailChange(null);
       setSuccessMsg('Email successfully verified and updated.');
       setIsSuccessToast(true);
       setTimeout(() => setIsSuccessToast(false), 3000);
-    } else {
-      setEmailError('Invalid verification code.');
+    } catch (err: any) {
+      setEmailError(err.message || 'Invalid verification code.');
     }
   };
 
@@ -251,26 +276,26 @@ const SettingsPage: React.FC = () => {
       return;
     }
     setIsUpdatingPassword(true);
-    setTimeout(() => {
+    try {
+      await api.post('/api/v1/users/me/password', {
+        current_password: passwordForm.current,
+        new_password: passwordForm.new
+      }, true);
       setIsUpdatingPassword(false);
       setIsPasswordModalOpen(false);
       setSuccessMsg('Password successfully changed.');
       setIsSuccessToast(true);
       setTimeout(() => setIsSuccessToast(false), 3000);
-    }, 1000);
+    } catch (err: any) {
+      setPasswordError(err.message || 'Failed to update password.');
+      setIsUpdatingPassword(false);
+    }
   };
 
   const initiateForgotPassword = async () => {
-    if (!user?.email) return;
     setIsUpdatingPassword(true);
     try {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedForgotOtp(code);
-      addSimulatedEmail({
-        to: user.email,
-        subject: 'Security: Password Reset OTP',
-        body: `You requested to reset your password. Use this verification code: ${code}.`
-      });
+      await api.post('/api/v1/users/me/password/otp', undefined, true);
       setPasswordStep('FORGOT_OTP');
       setForgotOtp(['', '', '', '', '', '']);
       setPasswordError('');
@@ -281,13 +306,18 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const verifyForgotOtp = () => {
+  const verifyForgotOtp = async () => {
     const code = forgotOtp.join('');
-    if (code === generatedForgotOtp || code === '000000') {
+    if (code.length !== 6) {
+      setPasswordError('Incorrect OTP code.');
+      return;
+    }
+    try {
+      await api.post('/api/v1/users/me/password/verify-otp', { otp: code }, true);
       setPasswordStep('FORGOT_RESET');
       setPasswordForm(prev => ({ ...prev, new: '', confirm: '' }));
       setPasswordError('');
-    } else {
+    } catch (e: any) {
       setPasswordError('Incorrect OTP code.');
     }
   };
@@ -302,26 +332,46 @@ const SettingsPage: React.FC = () => {
         return;
     }
     setIsUpdatingPassword(true);
-    setTimeout(() => {
+    try {
+        await api.post('/api/v1/users/me/password/reset', { new_password: passwordForm.new }, true);
         setIsUpdatingPassword(false);
         setIsPasswordModalOpen(false);
         setSuccessMsg('Identity restored. Password reset successful.');
         setIsSuccessToast(true);
         setTimeout(() => setIsSuccessToast(false), 3000);
-    }, 1000);
+    } catch (e: any) {
+        setPasswordError(e.message || 'Failed to reset password.');
+        setIsUpdatingPassword(false);
+    }
   };
 
   const handleMfaToggle = (checked: boolean) => {
     setIsMfaChallengeOpen(true);
   };
 
-  const confirmMfaChange = () => {
+  const confirmMfaChange = async () => {
     const nextValue = !user?.mfaEnabled;
-    updateUserProfile({ mfaEnabled: nextValue, mfaMethod: nextValue ? 'Email' : undefined });
-    setIsMfaChallengeOpen(false);
-    setSuccessMsg(nextValue ? 'MFA Protection Enabled.' : 'MFA Protection Disabled.');
-    setIsSuccessToast(true);
-    setTimeout(() => setIsSuccessToast(false), 3000);
+    try {
+      const resp = await api.post('/api/v1/users/me/mfa', {
+        enabled: nextValue,
+        method: nextValue ? (user?.mfaMethod || 'Email') : null
+      }, true);
+      if (resp) {
+        const baseUser = user ? { ...user } : {};
+        updateUserProfile(mapUserFromApi({
+          ...baseUser,
+          mfa_enabled: resp.mfa_enabled,
+          mfa_method: resp.mfa_method
+        }));
+      }
+      setIsMfaChallengeOpen(false);
+      setSuccessMsg(nextValue ? 'MFA Protection Enabled.' : 'MFA Protection Disabled.');
+      setIsSuccessToast(true);
+      setTimeout(() => setIsSuccessToast(false), 3000);
+    } catch (e: any) {
+      console.error(e);
+      setIsMfaChallengeOpen(false);
+    }
   };
 
   const formatCardNumber = (value: string) => {
@@ -628,6 +678,28 @@ const SettingsPage: React.FC = () => {
                               </button>
                            </div>
                         </Card>
+
+                        {isOauthUser && (
+                          <Card className="p-8 bg-white border-slate-100 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-8 hover:shadow-xl transition-all border-none shadow-sm">
+                             <div className="flex items-center gap-6 flex-1 min-w-0">
+                                <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 flex-shrink-0 shadow-inner">
+                                  <KeyRound size={26} />
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Set Password</h4>
+                                  <p className="text-xs text-slate-500 mt-1 truncate font-medium">Add a password for email login alongside Google sign-in.</p>
+                                </div>
+                             </div>
+                             <div className="flex gap-2 w-full sm:w-auto">
+                                <button 
+                                  onClick={() => navigate('/set-password')}
+                                  className="px-10 h-12 text-[11px] font-black uppercase tracking-[0.2em] text-white bg-[#0F172A] rounded-2xl hover:bg-slate-800 transition-all shadow-xl active:scale-95"
+                                >
+                                  Set Password
+                                </button>
+                             </div>
+                          </Card>
+                        )}
 
                         <Card className="p-8 bg-white border-slate-100 rounded-[2rem] hover:shadow-xl transition-all border-none shadow-sm">
                            <div className="flex flex-col sm:flex-row items-center justify-between gap-8 mb-10">
@@ -1084,10 +1156,6 @@ const SettingsPage: React.FC = () => {
                         ))}
                     </div>
 
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        Simulation Code: <span className="text-blue-600 font-mono text-sm">{generatedForgotOtp}</span>
-                    </div>
-
                     <div className="grid grid-cols-2 gap-4">
                         <Button variant="outline" onClick={() => setPasswordStep('UPDATE_FORM')} className="h-12 text-[10px] font-black uppercase tracking-widest border-slate-200 rounded-xl">Back</Button>
                         <Button 
@@ -1178,7 +1246,7 @@ const SettingsPage: React.FC = () => {
             </div>
             <div className="space-y-2">
                 <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Verify New Address</h4>
-                <p className="text-sm text-slate-500 font-medium">Authentication token dispatched to <span className="font-bold text-slate-900">{profileForm.email}</span></p>
+                <p className="text-sm text-slate-500 font-medium">Authentication token dispatched to <span className="font-bold text-slate-900">{pendingEmailChange || profileForm.email}</span></p>
             </div>
             <div className="flex justify-center gap-2">
                 {emailOtp.map((digit, idx) => (
@@ -1208,9 +1276,11 @@ const SettingsPage: React.FC = () => {
                     />
                 ))}
             </div>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Simulation Code: <span className="text-indigo-600 font-mono text-sm">{generatedEmailOtp}</span>
-            </div>
+            {emailError && (
+              <div className="bg-red-50 text-red-600 text-xs py-3 px-4 rounded-xl font-bold border border-red-100 flex items-center gap-2">
+                <AlertCircle size={14} /> {emailError}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
                 <Button variant="outline" onClick={() => setIsEmailVerifyOpen(false)} className="h-12 text-[10px] font-black uppercase tracking-widest border-slate-200 rounded-xl">Cancel</Button>
                 <Button onClick={verifyEmailOtp} className="bg-[#0F172A] h-12 text-[10px] font-black uppercase tracking-widest shadow-xl rounded-xl">Verify & Save</Button>
