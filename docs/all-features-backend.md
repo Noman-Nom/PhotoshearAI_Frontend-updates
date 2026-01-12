@@ -12,6 +12,40 @@
 - Reject unknown slugs with `404` and block inactive workspaces with `403`.
 - Suggested header propagation for internal services: `X-Workspace-Id`, `X-Workspace-Slug`.
 
+### Implemented Endpoints (OpenAPI v1)
+Only the endpoints listed below are implemented in `openapi.json`. All other endpoints in this document are planned unless stated otherwise.
+
+**Health**
+- `GET /healthz`
+- `GET /readyz`
+
+**Authentication**
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/signup`
+- `POST /api/v1/auth/verify-otp`
+- `POST /api/v1/auth/resend-otp`
+- `POST /api/v1/auth/forgot-password`
+- `POST /api/v1/auth/verify-reset-otp`
+- `POST /api/v1/auth/reset-password`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/check-subdomain`
+
+**Assets**
+- `POST /api/v1/assets/upload`
+- `POST /api/v1/assets/confirm`
+
+**Settings (Profile/Security)**
+- `GET /api/v1/users/me`
+- `PUT /api/v1/users/me`
+- `POST /api/v1/users/me/email-change`
+- `POST /api/v1/users/me/email-verify`
+- `POST /api/v1/users/me/password`
+- `POST /api/v1/users/me/password/otp`
+- `POST /api/v1/users/me/password/verify-otp`
+- `POST /api/v1/users/me/password/reset`
+- `POST /api/v1/users/me/mfa`
+
 ### Error Schema
 All API errors should follow a shared envelope:
 ```json
@@ -173,11 +207,11 @@ Order as present in `/app`:
 
 **Assumption**: Backend will provide a secure invitation token in place of raw query params.
 
-## 4. API Contracts (Inferred / Proposed)
+## 4. API Contracts (Implemented / Planned)
 
-> Frontend does not call HTTP endpoints. The following endpoints are **proposed** to support the UI behavior.
+> Frontend does not call HTTP endpoints. The following endpoints are **implemented** or **planned** based on `openapi.json`.
 
-### 4.1 POST `/auth/login`
+### 4.1 POST `/api/v1/auth/login` (Implemented)
 **Purpose**: Authenticate user.
 
 **Request (JSON)**
@@ -207,7 +241,7 @@ Order as present in `/app`:
 - `401` invalid credentials.
 - `403` verification required.
 
-### 4.2 POST `/auth/signup`
+### 4.2 POST `/api/v1/auth/signup` (Implemented)
 **Purpose**: Register a new user and send OTP.
 
 **Request (JSON)**
@@ -236,7 +270,7 @@ Order as present in `/app`:
 **Errors**
 - `409` user already exists or pending.
 
-### 4.3 POST `/auth/verify-otp`
+### 4.3 POST `/api/v1/auth/verify-otp` (Implemented)
 **Purpose**: Verify registration OTP.
 
 **Request (JSON)**
@@ -259,7 +293,7 @@ Order as present in `/app`:
 - Frontend currently sends only the OTP (email is stored in localStorage).
 - **Assumption**: frontend will include `email` or backend tracks it via a pending session.
 
-### 4.4 POST `/auth/resend-otp`
+### 4.4 POST `/api/v1/auth/resend-otp` (Implemented)
 **Purpose**: Resend signup OTP.
 
 **Request (JSON)**
@@ -272,7 +306,7 @@ Order as present in `/app`:
 { "status": "OTP_RESENT" }
 ```
 
-### 4.5 POST `/auth/forgot-password`
+### 4.5 POST `/api/v1/auth/forgot-password` (Implemented)
 **Purpose**: Send password reset OTP.
 
 **Request (JSON)**
@@ -285,7 +319,7 @@ Order as present in `/app`:
 { "status": "RESET_OTP_SENT" }
 ```
 
-### 4.6 POST `/auth/verify-reset-otp`
+### 4.6 POST `/api/v1/auth/verify-reset-otp` (Implemented)
 **Purpose**: Verify reset OTP.
 
 **Request (JSON)**
@@ -298,7 +332,7 @@ Order as present in `/app`:
 { "status": "RESET_VERIFIED" }
 ```
 
-### 4.7 POST `/auth/reset-password`
+### 4.7 POST `/api/v1/auth/reset-password` (Implemented)
 **Purpose**: Update password.
 
 **Request (JSON)**
@@ -311,7 +345,7 @@ Order as present in `/app`:
 { "status": "PASSWORD_UPDATED" }
 ```
 
-### 4.8 GET `/invitations/{token}`
+### 4.8 GET `/invitations/{token}` (Planned)
 **Purpose**: Resolve invitation details for display.
 
 **Response (200)**
@@ -326,7 +360,7 @@ Order as present in `/app`:
 
 **Assumption**: Replace frontend query param approach with tokenized invitations.
 
-### 4.9 POST `/invitations/accept`
+### 4.9 POST `/invitations/accept` (Planned)
 **Purpose**: Accept invitation and create account.
 
 **Request (JSON)**
@@ -749,7 +783,8 @@ Expected errors:
 - Backend will provide guest registry endpoints if Guest Data is retained.
 # Settings (Backend-Oriented, FastAPI)
 
-> Scope: Backend design for account settings, security, and billing management.\n> Source of truth: `/mnt/sdb1/Monis/fotoshareai/fotoshareai_frontend`.
+> Scope: Backend design for account settings, security, and billing management.
+> Source of truth: `/mnt/sdb1/Monis/fotoshareai/fotoshareai_frontend`.
 > All backend behaviors are inferred; items marked **Assumption** or **Unknown** are not confirmed by frontend.
 
 ## 1. Feature Overview
@@ -825,37 +860,52 @@ class BillingHistoryItem(BaseModel):
     status: Literal["Paid", "Failed", "Refunded"]
 ```
 
-## 3. Backend Endpoints (Proposed)
+## 3. Backend Endpoints (Implemented / Planned)
 
-### Profile
-**GET `/users/me`**\n- Return current user profile.
+### Profile (Implemented)
+**GET `/api/v1/users/me`**
+- Return current user profile.
 
-**PUT `/users/me`**\n- Update profile fields (first name, last name, company, phone).
+**PUT `/api/v1/users/me`**
+- Update profile fields (first name, last name, company, phone).
 
-**POST `/users/me/email-change`**\n- Request email change, send OTP to new email.
+**POST `/api/v1/users/me/email-change`**
+- Request email change, send OTP to new email.
 
-**POST `/users/me/email-verify`**\n- Verify email change OTP and update email.
+**POST `/api/v1/users/me/email-verify`**
+- Verify email change OTP and update email.
 
-### Password & Security
-**POST `/users/me/password`**\n- Update password (requires current password).
+### Password & Security (Implemented)
+**POST `/api/v1/users/me/password`**
+- Update password (requires current password).
 
-**POST `/users/me/password/otp`**\n- Send OTP for password reset from settings.
+**POST `/api/v1/users/me/password/otp`**
+- Send OTP for password reset from settings.
 
-**POST `/users/me/password/verify-otp`**\n- Verify OTP and allow reset.
+**POST `/api/v1/users/me/password/verify-otp`**
+- Verify OTP and allow reset.
 
-**POST `/users/me/password/reset`**\n- Set new password after OTP verification.
+**POST `/api/v1/users/me/password/reset`**
+- Set new password after OTP verification.
 
-**POST `/users/me/mfa`**\n- Enable or disable MFA.
-\n### Billing & Plans
-**GET `/billing/payment-methods`**\n- List payment methods.
+**POST `/api/v1/users/me/mfa`**
+- Enable or disable MFA.
 
-**POST `/billing/payment-methods`**\n- Add a payment method.
+### Billing & Plans (Planned)
+**GET `/billing/payment-methods`**
+- List payment methods.
 
-**DELETE `/billing/payment-methods/{payment_id}`**\n- Remove a payment method.
+**POST `/billing/payment-methods`**
+- Add a payment method.
 
-**GET `/billing/plans`**\n- List available plans.
+**DELETE `/billing/payment-methods/{payment_id}`**
+- Remove a payment method.
 
-**GET `/billing/history`**\n- List billing history.
+**GET `/billing/plans`**
+- List available plans.
+
+**GET `/billing/history`**
+- List billing history.
 
 ## 4. Business Rules & Constraints (From UI)
 
@@ -878,7 +928,10 @@ class BillingHistoryItem(BaseModel):
 
 ## 7. Redis Expectations (Assumed)
 
-- OTP keys for email change and password reset:\n  - `settings:otp:email:<userId>`\n  - `settings:otp:password:<userId>`\n- TTL: 5–10 minutes.
+- OTP keys for email change and password reset:
+  - `settings:otp:email:<userId>`
+  - `settings:otp:password:<userId>`
+- TTL: 5–10 minutes.
 
 ## 8. Error Handling
 
