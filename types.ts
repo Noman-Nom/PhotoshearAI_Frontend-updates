@@ -6,9 +6,11 @@ export interface User {
   lastName: string;
   companyName?: string;
   companyUrl?: string;
+  subdomain?: string;
   phone?: string;
   mfaEnabled?: boolean;
   mfaMethod?: 'Email' | 'Authenticator' | 'SMS';
+  status?: string;
 }
 
 export interface AuthResponse {

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { TeamProvider } from './contexts/TeamContext';
@@ -32,21 +32,27 @@ import AnalyticsPage from './app/analytics/page';
 import SettingsPage from './app/settings/page';
 import GlobalCalendarPage from './app/calendar/page';
 import StudioCalendarPage from './app/studio-calendar/page';
+import CompleteProfilePage from './app/complete-profile/page';
+import SetPasswordPage from './app/set-password/page';
 
 // Protected Route Component
 const ProtectedRoute = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, needsProfileCompletion } = useAuth();
+  const location = useLocation();
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+  if (needsProfileCompletion && location.pathname !== '/complete-profile') {
+    return <Navigate to="/complete-profile" replace />;
   }
   return <Outlet />;
 };
 
 // Public Route Component (redirects to workspaces if already logged in)
 const PublicRoute = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, needsProfileCompletion } = useAuth();
   if (isAuthenticated) {
-    return <Navigate to="/workspaces" replace />;
+    return <Navigate to={needsProfileCompletion ? "/complete-profile" : "/workspaces"} replace />;
   }
   return <Outlet />;
 };
@@ -66,6 +72,8 @@ const AppRoutes = () => {
       <Route path="/email-simulation" element={<EmailSimulationPage />} />
 
       <Route element={<ProtectedRoute />}>
+        <Route path="/complete-profile" element={<CompleteProfilePage />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/workspaces" element={<WorkspacesPage />} />
         <Route path="/roles" element={<WorkspacesPage />} />
         <Route path="/all-members" element={<WorkspacesPage />} />

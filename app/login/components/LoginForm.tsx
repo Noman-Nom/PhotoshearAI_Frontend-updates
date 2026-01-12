@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
@@ -9,6 +9,13 @@ import { useTranslation } from '../../../contexts/LanguageContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { cn } from '../../../utils/cn';
+import { GOOGLE_CLIENT_ID } from '../../../utils/api';
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 const GoogleIcon = () => (
   <svg className="h-5 w-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -20,10 +27,12 @@ const GoogleIcon = () => (
 );
 
 export const LoginForm: React.FC = () => {
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const { t, isRTL } = useTranslation();
   const navigate = useNavigate();
   const [formError, setFormError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const {
     register,
@@ -46,6 +55,29 @@ export const LoginForm: React.FC = () => {
       }
     }
   };
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) {
+      setGoogleError('Google client ID is not configured.');
+      return;
+    }
+    if (!window.google?.accounts?.id || !googleButtonRef.current) return;
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: async (response: any) => {
+        try {
+          const resp = await googleLogin(response.credential);
+          navigate(resp.needsProfileCompletion ? '/complete-profile' : '/workspaces');
+        } catch (error: any) {
+          setGoogleError(error.message || 'Google sign-in failed.');
+        }
+      }
+    });
+    window.google.accounts.id.renderButton(googleButtonRef.current, {
+      theme: 'outline',
+      size: 'large',
+      width: 360
+    });
+  }, [googleLogin, navigate]);
 
   return (
     <div className="space-y-6">
@@ -113,13 +145,14 @@ export const LoginForm: React.FC = () => {
         </div>
       </div>
 
-      <button 
-        type="button"
-        className="w-full flex items-center justify-center gap-2 h-11 bg-white border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 transition-colors text-sm font-medium"
-      >
-        <GoogleIcon />
-        {t('google_sign_in')}
-      </button>
+      {googleError && (
+        <div className="p-3 rounded-md bg-red-50 text-red-600 text-sm text-start font-bold border border-red-100">
+          {googleError}
+        </div>
+      )}
+      <div className="flex justify-center">
+        <div ref={googleButtonRef} className="w-full flex justify-center" />
+      </div>
 
       <div className="text-center text-sm text-slate-600">
         {t('no_account')}{' '}

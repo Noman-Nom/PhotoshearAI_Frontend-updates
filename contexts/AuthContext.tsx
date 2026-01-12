@@ -1,7 +1,8 @@
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { User, AuthStatus } from '../types';
-import { addSimulatedEmail } from '../constants';
+import { api, setAuthToken, getAuthToken } from '../utils/api';
+import { mapUserFromApi } from '../utils/mappers';
 
 type ResetStep = 'EMAIL' | 'OTP' | 'PASSWORD' | 'SUCCESS';
 
@@ -10,6 +11,9 @@ interface AuthContextType {
   status: AuthStatus;
   login: (data: any) => Promise<void>;
   register: (data: any) => Promise<void>;
+  googleLogin: (token: string) => Promise<{ needsProfileCompletion: boolean }>;
+  completeOAuthProfile: (data: { companyName: string; companyUrl: string; phone: string }) => Promise<void>;
+  setOauthPassword: (password: string) => Promise<void>;
   updateUserProfile: (data: Partial<User>) => void;
   verifyOtp: (otp: string) => Promise<void>;
   resendOtp: () => Promise<void>;
@@ -23,17 +27,17 @@ interface AuthContextType {
   pendingUserEmail: string | null;
   resetEmail: string | null;
   resetStep: ResetStep;
+  needsProfileCompletion: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Local storage keys
-const USERS_STORAGE_KEY = 'photmo_registered_users_v1';
-const PENDING_USERS_KEY = 'photmo_pending_users_v1';
 const CURRENT_USER_KEY = 'auth_user';
 const ACTIVE_PENDING_EMAIL_KEY = 'active_pending_email';
 const PENDING_RESET_KEY = 'photmo_pending_reset_v1';
 const RESET_STEP_KEY = 'photmo_reset_step_v1';
+const OAUTH_PROFILE_PENDING_KEY = 'photmo_oauth_profile_pending_v1';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
@@ -62,287 +66,238 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [resetStep, setResetStepState] = useState<ResetStep>(() => {
     return (localStorage.getItem(RESET_STEP_KEY) as ResetStep) || 'EMAIL';
   });
+  const [needsProfileCompletion, setNeedsProfileCompletion] = useState<boolean>(() => {
+    return localStorage.getItem(OAUTH_PROFILE_PENDING_KEY) === 'true';
+  });
 
   const setResetStep = useCallback((step: ResetStep) => {
     setResetStepState(step);
     localStorage.setItem(RESET_STEP_KEY, step);
   }, []);
 
-  const getStoredUsers = (): any[] => {
-    try {
-      const stored = localStorage.getItem(USERS_STORAGE_KEY);
-      const parsed = stored ? JSON.parse(stored) : [];
-      
-      // Ensure the requested dummy user is always available
-      const dummyCredentials = {
-        id: 'danish_1',
-        email: 'Danish@yopmail.com',
-        password: 'Danish12@',
-        firstName: 'Danish',
-        lastName: 'Mukhtar',
-        companyName: 'Photmo Inc.',
-        companyUrl: 'photmo'
-      };
-
-      if (!parsed.some((u: any) => u.email === dummyCredentials.email)) {
-        return [dummyCredentials, ...parsed];
-      }
-      
-      return parsed;
-    } catch (e) {
-      return [];
-    }
-  };
-
-  const getPendingUsers = (): any[] => {
-    try {
-      const stored = localStorage.getItem(PENDING_USERS_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-      return [];
-    }
-  };
-
   const login = useCallback(async (data: any) => {
     setStatus(AuthStatus.LOADING);
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        const users = getStoredUsers();
-        const pendingUsers = getPendingUsers();
-        
-        const foundUser = users.find(u => u.email === data.email && u.password === data.password);
-        if (foundUser) {
-          const { password, ...userProfile } = foundUser;
-          setUser(userProfile);
-          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userProfile));
-          setStatus(AuthStatus.SUCCESS);
-          resolve();
-          return;
-        }
-
-        const foundPending = pendingUsers.find(u => u.email === data.email && u.password === data.password);
-        if (foundPending) {
-          setPendingUserEmail(foundPending.email);
-          localStorage.setItem(ACTIVE_PENDING_EMAIL_KEY, foundPending.email);
-          setStatus(AuthStatus.IDLE);
-          reject(new Error('VERIFICATION_REQUIRED'));
-          return;
-        }
-
-        setStatus(AuthStatus.ERROR);
-        reject(new Error('Invalid credentials. Please register first.'));
-      }, 1000);
-    });
+    try {
+      const resp = await api.post('/api/v1/auth/login', data, false);
+      if (resp?.token) setAuthToken(resp.token);
+      if (resp?.user) {
+        const mappedUser = mapUserFromApi(resp.user);
+        setUser(mappedUser);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+      }
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
   }, []);
 
-  const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+  const googleLogin = useCallback(async (token: string) => {
+    setStatus(AuthStatus.LOADING);
+    try {
+      const resp = await api.post('/api/v1/auth/google/login', { token }, false);
+      if (resp?.token) setAuthToken(resp.token);
+      if (resp?.user) {
+        const mappedUser = mapUserFromApi(resp.user);
+        setUser(mappedUser);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+      }
+      const pending = !!resp?.needs_profile_completion;
+      setNeedsProfileCompletion(pending);
+      if (pending) {
+        localStorage.setItem(OAUTH_PROFILE_PENDING_KEY, 'true');
+      } else {
+        localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
+      }
+      setStatus(AuthStatus.SUCCESS);
+      return { needsProfileCompletion: pending };
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
+  }, []);
+
+  const completeOAuthProfile = useCallback(async (data: { companyName: string; companyUrl: string; phone: string }) => {
+    setStatus(AuthStatus.LOADING);
+    try {
+      const resp = await api.post('/api/v1/auth/complete-profile', {
+        company_name: data.companyName,
+        company_url: data.companyUrl,
+        phone: data.phone
+      }, true);
+      if (resp?.user) {
+        const mappedUser = mapUserFromApi(resp.user);
+        setUser(mappedUser);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+      }
+      setNeedsProfileCompletion(false);
+      localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
+  }, []);
+
+  const setOauthPassword = useCallback(async (password: string) => {
+    setStatus(AuthStatus.LOADING);
+    try {
+      await api.post('/api/v1/auth/set-password', { password }, true);
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
+  }, []);
 
   const register = useCallback(async (data: any) => {
     setStatus(AuthStatus.LOADING);
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        const users = getStoredUsers();
-        const pendingUsers = getPendingUsers();
-        
-        if (users.some(u => u.email === data.email) || pendingUsers.some(u => u.email === data.email)) {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('User already exists or is awaiting verification.'));
-          return;
-        }
-
-        const otp = generateOtp();
-        const newPendingUser = {
-          ...data,
-          otp,
-          expiry: Date.now() + 10 * 60 * 1000 
-        };
-
-        const updatedPending = [...pendingUsers, newPendingUser];
-        localStorage.setItem(PENDING_USERS_KEY, JSON.stringify(updatedPending));
-        
-        setPendingUserEmail(data.email);
-        localStorage.setItem(ACTIVE_PENDING_EMAIL_KEY, data.email);
-
-        // Bypassing OTP for invitations as they are already verified via the invitation link
-        if (!data.isInvitation) {
-          addSimulatedEmail({
-            to: data.email,
-            subject: 'Verify your email address',
-            body: `Welcome to Photmo! Your verification code is: ${otp}. This code will expire in 10 minutes.`
-          });
-        }
-
-        setStatus(AuthStatus.SUCCESS);
-        resolve();
-      }, 1000);
-    });
+    try {
+      const payload = {
+        email: data.email,
+        first_name: data.firstName ?? data.first_name,
+        last_name: data.lastName ?? data.last_name,
+        password: data.password,
+        company_name: data.companyName ?? data.company_name,
+        company_url: data.url ?? data.companyUrl ?? data.company_url,
+        country: data.country,
+        phone: data.phone,
+        is_invitation: data.isInvitation ?? data.is_invitation ?? false
+      };
+      await api.post('/api/v1/auth/signup', payload, false);
+      setPendingUserEmail(data.email);
+      localStorage.setItem(ACTIVE_PENDING_EMAIL_KEY, data.email);
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
   }, []);
 
   const updateUserProfile = useCallback((data: Partial<User>) => {
     setUser(prev => {
-      if (!prev) return null;
-      const updated = { ...prev, ...data };
+      const updated = { ...(prev || {}) } as User;
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined) {
+          (updated as any)[key] = value;
+        }
+      });
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
-      
-      // Update in registered users list too
-      const users = getStoredUsers();
-      const updatedUsers = users.map(u => u.id === prev.id ? { ...u, ...data } : u);
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
-      
       return updated;
     });
   }, []);
 
   const verifyOtp = useCallback(async (otp: string) => {
     setStatus(AuthStatus.LOADING);
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        const pendingUsers = getPendingUsers();
-        const userToVerifyIdx = pendingUsers.findIndex(u => u.email === pendingUserEmail);
-        
-        if (userToVerifyIdx === -1) {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('No registration in progress for this email.'));
-          return;
-        }
-
-        const pendingData = pendingUsers[userToVerifyIdx];
-        
-        if (pendingData.otp === otp) {
-          const users = getStoredUsers();
-          const newUserProfile: User = {
-            id: Math.random().toString(36).substr(2, 9),
-            email: pendingData.email,
-            firstName: pendingData.firstName,
-            lastName: pendingData.lastName,
-            companyName: pendingData.companyName,
-            companyUrl: pendingData.url
-          };
-          const newUserRecord = { ...newUserProfile, password: pendingData.password };
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify([...users, newUserRecord]));
-          const remainingPending = pendingUsers.filter(u => u.email !== pendingUserEmail);
-          localStorage.setItem(PENDING_USERS_KEY, JSON.stringify(remainingPending));
-          setUser(newUserProfile);
-          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(newUserProfile));
-          setPendingUserEmail(null);
-          localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
-          setStatus(AuthStatus.SUCCESS);
-          resolve();
-        } else {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('Invalid verification code.'));
-        }
-      }, 1000);
-    });
+    try {
+      if (!pendingUserEmail) throw new Error('No registration in progress for this email.');
+      const resp = await api.post('/api/v1/auth/verify-otp', { email: pendingUserEmail, otp }, false);
+      if (resp?.token) setAuthToken(resp.token);
+      if (resp?.user) {
+        const mappedUser = mapUserFromApi(resp.user);
+        setUser(mappedUser);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+      }
+      setPendingUserEmail(null);
+      localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
   }, [pendingUserEmail]);
 
   const resendOtp = useCallback(async () => {
     if (!pendingUserEmail) throw new Error('No active email for verification.');
-    const pendingUsers = getPendingUsers();
-    const userIdx = pendingUsers.findIndex(u => u.email === pendingUserEmail);
-    if (userIdx === -1) throw new Error('Registration record not found.');
-    const newOtp = generateOtp();
-    pendingUsers[userIdx].otp = newOtp;
-    localStorage.setItem(PENDING_USERS_KEY, JSON.stringify(pendingUsers));
-    addSimulatedEmail({
-      to: pendingUserEmail,
-      subject: 'New Verification Code',
-      body: `Your new verification code is: ${newOtp}.`
-    });
+    await api.post('/api/v1/auth/resend-otp', { email: pendingUserEmail }, false);
   }, [pendingUserEmail]);
 
   // Forgot Password Logic
   const forgotPasswordSendOtp = useCallback(async (email: string) => {
     setStatus(AuthStatus.LOADING);
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        const users = getStoredUsers();
-        const userExists = users.find(u => u.email === email);
-        if (!userExists) {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('No user found with this email address.'));
-          return;
-        }
-        const otp = generateOtp();
-        localStorage.setItem(PENDING_RESET_KEY, JSON.stringify({ email, otp }));
-        setResetEmail(email);
-        setResetStep('OTP');
-        addSimulatedEmail({
-          to: email,
-          subject: 'Password Reset Verification Code',
-          body: `Your password reset code is: ${otp}. If you did not request this, please ignore this email.`
-        });
-        setStatus(AuthStatus.SUCCESS);
-        resolve();
-      }, 1000);
-    });
+    try {
+      await api.post('/api/v1/auth/forgot-password', { email }, false);
+      localStorage.setItem(PENDING_RESET_KEY, JSON.stringify({ email }));
+      setResetEmail(email);
+      setResetStep('OTP');
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
   }, [setResetStep]);
 
   const verifyResetOtp = useCallback(async (otp: string) => {
     setStatus(AuthStatus.LOADING);
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        const stored = localStorage.getItem(PENDING_RESET_KEY);
-        if (!stored) {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('Reset session expired.'));
-          return;
-        }
-        const data = JSON.parse(stored);
-        if (data.otp === otp) {
-          setResetStep('PASSWORD');
-          setStatus(AuthStatus.SUCCESS);
-          resolve();
-        } else {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('Invalid reset code.'));
-        }
-      }, 1000);
-    });
+    try {
+      const stored = localStorage.getItem(PENDING_RESET_KEY);
+      if (!stored) throw new Error('Reset session expired.');
+      const data = JSON.parse(stored);
+      const resp = await api.post('/api/v1/auth/verify-reset-otp', { email: data.email, otp }, false);
+      localStorage.setItem(PENDING_RESET_KEY, JSON.stringify({ email: data.email, reset_token: resp.reset_token }));
+      setResetStep('PASSWORD');
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
   }, [setResetStep]);
 
   const resetPassword = useCallback(async (newPassword: string) => {
     setStatus(AuthStatus.LOADING);
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        const stored = localStorage.getItem(PENDING_RESET_KEY);
-        if (!stored) {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('Reset session expired.'));
-          return;
-        }
-        const { email } = JSON.parse(stored);
-        const users = getStoredUsers();
-        const userIdx = users.findIndex(u => u.email === email);
-        if (userIdx !== -1) {
-          users[userIdx].password = newPassword;
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-          
-          localStorage.removeItem(PENDING_RESET_KEY);
-          localStorage.removeItem(RESET_STEP_KEY);
-          setResetEmail(null);
-          setResetStepState('EMAIL'); // Reset back to start locally without trigger
-          
-          setStatus(AuthStatus.SUCCESS);
-          resolve();
-        } else {
-          setStatus(AuthStatus.ERROR);
-          reject(new Error('User record missing.'));
-        }
-      }, 1000);
-    });
+    try {
+      const stored = localStorage.getItem(PENDING_RESET_KEY);
+      if (!stored) throw new Error('Reset session expired.');
+      const { email, reset_token } = JSON.parse(stored);
+      await api.post('/api/v1/auth/reset-password', { email, new_password: newPassword, reset_token }, false);
+      localStorage.removeItem(PENDING_RESET_KEY);
+      localStorage.removeItem(RESET_STEP_KEY);
+      setResetEmail(null);
+      setResetStepState('EMAIL');
+      setStatus(AuthStatus.SUCCESS);
+    } catch (err: any) {
+      setStatus(AuthStatus.ERROR);
+      throw err;
+    }
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
+    setAuthToken(null);
+    api.post('/api/v1/auth/logout', undefined, true).catch(() => undefined);
     localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
     localStorage.removeItem(PENDING_RESET_KEY);
     localStorage.removeItem(RESET_STEP_KEY);
+    localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
     setPendingUserEmail(null);
     setResetEmail(null);
     setResetStepState('EMAIL');
+    setNeedsProfileCompletion(false);
     setStatus(AuthStatus.IDLE);
+  }, []);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) return;
+    setStatus(AuthStatus.LOADING);
+    api.get('/api/v1/auth/me', true)
+      .then((resp) => {
+        if (resp) {
+          const mappedUser = mapUserFromApi(resp);
+          setUser(mappedUser);
+          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+        }
+        setStatus(AuthStatus.SUCCESS);
+      })
+      .catch(() => {
+        setAuthToken(null);
+        localStorage.removeItem(CURRENT_USER_KEY);
+        setUser(null);
+        localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
+        setNeedsProfileCompletion(false);
+        setStatus(AuthStatus.ERROR);
+      });
   }, []);
 
   return (
@@ -352,6 +307,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status,
         login,
         register,
+        googleLogin,
+        completeOAuthProfile,
+        setOauthPassword,
         updateUserProfile,
         verifyOtp,
         resendOtp,
@@ -363,7 +321,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         pendingUserEmail,
         resetEmail,
-        resetStep
+        resetStep,
+        needsProfileCompletion
       }}
     >
       {children}
