@@ -15,12 +15,15 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { cn } from '../../../utils/cn';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useWorkspace } from '../../../contexts/WorkspaceContext';
+import { uploadAsset } from '../../../utils/api';
 
 const BRANDING_STORAGE_KEY = 'photmo_branding_items_v1';
 
 const AddBrandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { activeWorkspace } = useWorkspace();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form State
@@ -82,18 +85,24 @@ const AddBrandingPage: React.FC = () => {
 
     setIsSaving(true);
 
-    // Convert logo file to Base64 for persistence
-    let base64Logo = logoPreview;
+    let logoValue = logoPreview;
     if (logoFile) {
         try {
-            base64Logo = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(logoFile);
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = error => reject(error);
-            });
+            const uploadResp = await uploadAsset({
+                filename: logoFile.name,
+                content_type: logoFile.type || undefined,
+                asset_type: 'logo',
+                workspace_id: activeWorkspace?.id || null
+            }, logoFile);
+            if (uploadResp?.asset_url) {
+                logoValue = uploadResp.asset_url;
+                setLogoPreview(uploadResp.asset_url);
+            }
         } catch (e) {
-            console.error("Failed to convert logo", e);
+            console.error("Failed to upload logo", e);
+            setIsSaving(false);
+            alert("Failed to upload logo. Please try again.");
+            return;
         }
     }
 
@@ -111,7 +120,7 @@ const AddBrandingPage: React.FC = () => {
         status: 'Active',
         lastUpdated: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         iconType: 'main',
-        logo: base64Logo, // Saved at root
+        logo: logoValue, // Saved at root
         watermarkPosition: 'top-right', // Default position
         detailsPosition: 'bottom-left' // Default position
     };
