@@ -1,38 +1,28 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Shield, Check, UserPlus, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Shield, Check, UserPlus, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { useAuth } from '../../contexts/AuthContext';
-import { useTeam } from '../../contexts/TeamContext';
-import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { invitationsApi } from '../../services/invitationsApi';
+import { setAuthToken } from '../../utils/api';
 import { cn } from '../../utils/cn';
 
-type Step = 'INVITE' | 'REGISTER' | 'SUCCESS';
+type Step = 'LOADING' | 'INVITE' | 'REGISTER' | 'SUCCESS' | 'ERROR';
 
 const AcceptInvitationPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { register } = useAuth();
-  const { acceptInvitation, pendingMembers } = useTeam();
-  const { workspaces } = useWorkspace();
   
-  const recipient = searchParams.get('recipient') || '';
-  const accessLevelStr = searchParams.get('accessLevel') || 'Full Access';
-  const org = searchParams.get('org') || 'Photmo Inc.';
+  const token = searchParams.get('token') || '';
   
-  // Find original invitation to get the correct name
-  const invite = pendingMembers.find(p => p.email.toLowerCase() === recipient.toLowerCase());
-  const firstNameFromInvite = invite?.firstName || '';
-  const lastNameFromInvite = invite?.lastName || '';
-
-  // Parse access level into list if it's comma separated
-  const accessList = accessLevelStr.includes(',') 
-    ? accessLevelStr.split(',').map(s => s.trim()) 
-    : [accessLevelStr];
-
-  const [step, setStep] = useState<Step>('INVITE');
+  const [step, setStep] = useState<Step>('LOADING');
+  const [invitationDetails, setInvitationDetails] = useState<{
+    recipient: string;
+    org: string;
+    access_level: string;
+    role: string | null;
+  } | null>(null);
   
   // Form State
   const [password, setPassword] = useState('');
@@ -40,12 +30,35 @@ const AcceptInvitationPage: React.FC = () => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch invitation details on mount
+  useEffect(() => {
+    const fetchInvitationDetails = async () => {
+      if (!token) {
+        setError('Invalid invitation link. Token is missing.');
+        setStep('ERROR');
+        return;
+      }
+
+      try {
+        const details = await invitationsApi.getDetails(token);
+        setInvitationDetails(details);
+        setStep('INVITE');
+      } catch (err: any) {
+        console.error('Error fetching invitation details:', err);
+        setError(err.message || 'This invitation link is invalid or has expired.');
+        setStep('ERROR');
+      }
+    };
+
+    fetchInvitationDetails();
+  }, [token]);
+
   const handleInitialAccept = () => {
     setStep('REGISTER');
   };
 
   const handleReject = () => {
-     navigate('/login');
+    navigate('/login');
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -53,61 +66,95 @@ const AcceptInvitationPage: React.FC = () => {
     setError('');
 
     if (!password) {
-        setError('Password is required');
-        return;
+      setError('Password is required');
+      return;
     }
-    if (password.length < 6) {
-        setError('Password must be at least 6 characters');
-        return;
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
     }
     if (password !== confirmPassword) {
-        setError('Passwords do not match');
-        return;
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (!token || !invitationDetails) {
+      setError('Invalid invitation. Please request a new invitation.');
+      return;
     }
 
     setIsSubmitting(true);
     
-    // Use invitation data for naming
     try {
-        const firstName = firstNameFromInvite || recipient.split('@')[0];
-        const lastName = lastNameFromInvite || '';
+      const response = await invitationsApi.accept({
+        token,
+        password,
+      });
 
-        await register({
-            email: recipient,
-            firstName,
-            lastName,
-            companyName: org,
-            password: password,
-            isInvitation: true // Flag to skip standard OTP email
-        });
+      // Store the auth token
+      setAuthToken(response.token);
+      
+      setIsSubmitting(false);
+      setStep('SUCCESS');
+      
+      // Auto redirect to dashboard after success
+      setTimeout(() => {
+        navigate('/dashboard');
+        // Reload to update auth state
+        window.location.reload();
+      }, 2500);
 
-        // Use the centralized TeamContext method to transition from Pending to Registered
-        // Pass current workspace IDs to snapshot access for "Full Access" users
-        acceptInvitation(recipient, { 
-            firstName, 
-            lastName, 
-            phone: '',
-            password, // Included for persistence in simulated users list
-            currentWorkspaceIds: workspaces.map(w => w.id)
-        });
-        
-        setIsSubmitting(false);
-        setStep('SUCCESS');
-        
-        // Auto redirect after showing success message
-        setTimeout(() => {
-            navigate('/dashboard');
-        }, 2500);
-
-    } catch (err) {
-        console.error(err);
-        setError('Registration failed. Please try again.');
+    } catch (err: any) {
+        console.error('Error accepting invitation:', err);
+        setError(err.message || 'Failed to accept invitation. Please try again.');
         setIsSubmitting(false);
     }
   };
 
+  // --- Loading State ---
+  if (step === 'LOADING') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+          <div className="p-12 flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-6">
+              <Loader2 className="w-8 h-8 text-blue-600 animate-spin" strokeWidth={2} />
+            </div>
+            <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight uppercase">Loading Invitation</h2>
+            <p className="text-slate-500 text-sm font-medium">Please wait...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Error State ---
+  if (step === 'ERROR') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+          <div className="p-8 sm:p-10 flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-6">
+              <AlertCircle className="w-8 h-8 text-red-600" strokeWidth={2} />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight uppercase">Invalid Invitation</h2>
+            <p className="text-slate-500 text-sm leading-relaxed mb-8 font-medium max-w-[320px]">
+              {error}
+            </p>
+            <Button 
+              onClick={() => navigate('/login')}
+              className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-white h-14 text-xs font-black uppercase tracking-[0.15em] shadow-xl shadow-slate-900/10 rounded-2xl"
+            >
+              Go to Login
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // --- Step 1: Invitation Details Card ---
-  if (step === 'INVITE') {
+  if (step === 'INVITE' && invitationDetails) {
     return (
         <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans">
         <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
@@ -123,15 +170,15 @@ const AcceptInvitationPage: React.FC = () => {
             
             {/* Description */}
             <div className="text-slate-500 text-sm leading-relaxed mb-1 font-medium">
-                Hello <span className="font-bold text-slate-900">{firstNameFromInvite} {lastNameFromInvite}</span>,<br/>
-                You have been invited to join the <span className="font-bold text-slate-900">{org} workspace</span>
+                Hello,<br/>
+                You have been invited to join <span className="font-bold text-slate-900">{invitationDetails.org}</span>
             </div>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-6">
                 AS PART OF THE CORE TEAM
             </p>
             
             <p className="text-base font-bold text-slate-900 mb-8 px-6 py-2.5 bg-slate-50 rounded-2xl border border-slate-100 shadow-inner">
-                {recipient}
+                {invitationDetails.recipient}
             </p>
 
             {/* Access Rights Card */}
@@ -139,12 +186,12 @@ const AcceptInvitationPage: React.FC = () => {
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Access Scope</h3>
                 
                 <div className="space-y-3">
-                    {accessList.map((access, idx) => (
-                        <div key={idx} className="flex items-center gap-3">
-                            <div className={cn("w-2 h-2 rounded-full", access === 'Full Access' ? 'bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.1)]' : 'bg-emerald-50 shadow-[0_0_0_4px_rgba(16,185,129,0.1)]')}></div>
-                            <span className="text-sm font-bold text-slate-800 uppercase tracking-tight">{access}</span>
-                        </div>
-                    ))}
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.1)]"></div>
+                    <span className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                      {invitationDetails.role || invitationDetails.access_level}
+                    </span>
+                  </div>
                 </div>
             </div>
 
@@ -177,31 +224,27 @@ const AcceptInvitationPage: React.FC = () => {
                 </div>
                 <div className="h-0.5 w-12 bg-slate-200 rounded-full"></div>
             </div>
-            
-            <a href="#" className="flex items-center gap-1.5 text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] hover:text-blue-600 transition-colors">
-                Contact Us <ExternalLink size={10} strokeWidth={3} />
-            </a>
         </div>
         </div>
     );
   }
 
   // --- Step 2: Registration Form ---
-  if (step === 'REGISTER') {
+  if (step === 'REGISTER' && invitationDetails) {
     return (
         <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans">
              <div className="w-full max-w-[480px] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-right-8 duration-300">
                 <div className="p-8 sm:p-12">
                     <div className="mb-10 text-center">
                         <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Setup your account</h2>
-                        <p className="text-sm text-slate-500 mt-2 font-medium">Create a secure password to join <span className="font-bold text-slate-900">{org}</span></p>
+                        <p className="text-sm text-slate-500 mt-2 font-medium">Create a secure password to join <span className="font-bold text-slate-900">{invitationDetails.org}</span></p>
                     </div>
 
                     <form onSubmit={handleRegister} className="space-y-6">
                         <div className="space-y-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Verified Email</label>
                              <div className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-400 cursor-not-allowed shadow-inner lowercase">
-                                 {recipient}
+                                 {invitationDetails.recipient}
                              </div>
                         </div>
                         
@@ -239,7 +282,7 @@ const AcceptInvitationPage: React.FC = () => {
                                 isLoading={isSubmitting}
                                 className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-white h-14 text-xs font-black uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/10 rounded-2xl transition-all"
                             >
-                                Register & Join Workspace
+                                Accept Invitation & Join
                             </Button>
                         </div>
                     </form>
