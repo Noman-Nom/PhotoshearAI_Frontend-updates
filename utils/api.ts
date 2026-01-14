@@ -91,9 +91,10 @@ export const uploadAsset = async (request: {
     console.warn('S3 upload request completed with warning:', err);
   });
 
-  // Return asset_url immediately from initial response
+  // Return asset_url without query parameters
+  const cleanUrl = createResp.asset_url.split('?')[0];
   return {
     asset_id: createResp.asset_id,
-    asset_url: createResp.asset_url
+    asset_url: cleanUrl
   };
 };
