@@ -1,55 +1,79 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Workspace, loadWorkspaces, saveWorkspacesToStorage } from '../constants';
+import { Workspace } from '../constants';
 import { useAuth } from './AuthContext';
-import { useTeam } from './TeamContext';
+import { workspaceApi } from '../services/workspaceApi';
+import { mapWorkspaceListToWorkspace, mapWorkspaceCreateToApi, mapWorkspaceUpdateToApi } from '../utils/workspaceMappers';
 
 interface WorkspaceContextType {
   workspaces: Workspace[];
   activeWorkspace: Workspace | null;
-  setActiveWorkspaceById: (id: string) => void;
-  createWorkspace: (data: Omit<Workspace, 'id' | 'eventsCount' | 'membersCount' | 'collaborators'>) => void;
-  updateWorkspace: (id: string, data: Partial<Workspace>) => void;
-  deleteWorkspace: (id: string) => void;
+  loading: boolean;
+  error: string | null;
+  setActiveWorkspaceById: (id: string) => Promise<void>;
+  createWorkspace: (data: Omit<Workspace, 'id' | 'eventsCount' | 'membersCount' | 'collaborators'>) => Promise<void>;
+  updateWorkspace: (id: string, data: Partial<Workspace>) => Promise<void>;
+  deleteWorkspace: (id: string) => Promise<void>;
+  refreshWorkspaces: () => Promise<void>;
+  addWorkspaceMember: (workspaceId: string, memberId: string, roleId?: string) => Promise<void>;
+  removeWorkspaceMember: (workspaceId: string, memberId: string) => Promise<void>;
+  getWorkspaceMembers: (workspaceId: string) => Promise<any[]>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const { members } = useTeam();
-  const [allWorkspaces, setAllWorkspaces] = useState<Workspace[]>(() => {
-    const loaded = loadWorkspaces();
-    // Defensive check to filter out any null/undefined entries from storage
-    return Array.isArray(loaded) ? loaded.filter(Boolean) : [];
-  });
+  const [allWorkspaces, setAllWorkspaces] = useState<Workspace[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
     return localStorage.getItem('active_workspace_id');
   });
 
-  // Filter workspaces based on user role and allowed ids
-  const filteredWorkspaces = useMemo(() => {
-    if (!user || !user.email) return [];
+  // Fetch workspaces from API
+  const fetchWorkspaces = useCallback(async () => {
+    if (!user) return;
     
-    const userEmailLower = user.email.toLowerCase();
+    setLoading(true);
+    setError(null);
     
-    // Find the member profile for the current user
-    const currentUserProfile = members.find(m => m?.email?.toLowerCase() === userEmailLower);
-    
-    // Admin Roles: Owners and Account Managers see everything
-    const userRole = currentUserProfile?.role || '';
-    const isAdmin = currentUserProfile?.isOwner || 
-                    ['Owner', 'SuperAdmin / Owner', 'Account Manager'].includes(userRole);
-
-    if (isAdmin) {
-      return allWorkspaces;
+    try {
+      // Fetch all workspaces (API handles permission filtering server-side)
+      const response = await workspaceApi.list({ page: 1, page_size: 100 });
+      const mappedWorkspaces = response.items.map(mapWorkspaceListToWorkspace);
+      setAllWorkspaces(mappedWorkspaces);
+      
+      // Set initial active workspace if none is set
+      if (!activeWorkspaceId && mappedWorkspaces.length > 0) {
+        setActiveWorkspaceId(mappedWorkspaces[0].id);
+        localStorage.setItem('active_workspace_id', mappedWorkspaces[0].id);
+      }
+    } catch (err: any) {
+      const message = err?.message || 'Failed to fetch workspaces';
+      setError(message);
+      console.error('Error fetching workspaces:', err);
+    } finally {
+      setLoading(false);
     }
+  }, [user, activeWorkspaceId]);
 
-    // Membership is now strictly based on ID inclusion to allow snapshot and removability behavior
-    const allowedIds = currentUserProfile?.allowedWorkspaceIds || [];
-    return allWorkspaces.filter(ws => ws && ws.id && allowedIds.includes(ws.id));
-  }, [allWorkspaces, user, members]);
+  // Load workspaces on mount and when user changes
+  useEffect(() => {
+    if (user) {
+      fetchWorkspaces();
+    } else {
+      setAllWorkspaces([]);
+      setActiveWorkspaceId(null);
+      localStorage.removeItem('active_workspace_id');
+    }
+  }, [user, fetchWorkspaces]);
+
+  // Backend handles filtering, so we use allWorkspaces directly
+  const filteredWorkspaces = useMemo(() => {
+    return allWorkspaces;
+  }, [allWorkspaces]);
 
   const activeWorkspace = useMemo(() => {
     if (!filteredWorkspaces.length) return null;
@@ -66,49 +90,139 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [filteredWorkspaces, activeWorkspaceId]);
 
-  const setActiveWorkspaceById = useCallback((id: string) => {
+  const setActiveWorkspaceById = useCallback(async (id: string) => {
     setActiveWorkspaceId(id);
     localStorage.setItem('active_workspace_id', id);
+    
+    try {
+      await workspaceApi.setActive(id);
+    } catch (err: any) {
+      console.error('Error setting active workspace:', err);
+      // Keep local state even if API call fails (offline support)
+    }
   }, []);
 
-  const createWorkspace = useCallback((data: any) => {
-    const newId = `w_${Date.now()}`;
-    const newWs: Workspace = {
-      id: newId,
-      eventsCount: 0,
-      membersCount: 1,
-      collaborators: [],
-      ...data
-    };
-    const updated = [newWs, ...allWorkspaces];
-    setAllWorkspaces(updated);
-    saveWorkspacesToStorage(updated);
+  const createWorkspace = useCallback(async (data: Omit<Workspace, 'id' | 'eventsCount' | 'membersCount' | 'collaborators'>) => {
+    setLoading(true);
+    setError(null);
     
-    if (!activeWorkspaceId) {
-      setActiveWorkspaceById(newId);
+    try {
+      const apiData = mapWorkspaceCreateToApi(data);
+      await workspaceApi.create(apiData);
+      
+      // Refresh workspaces to get the new one
+      await fetchWorkspaces();
+    } catch (err: any) {
+      const message = err?.message || 'Failed to create workspace';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
-  }, [allWorkspaces, activeWorkspaceId, setActiveWorkspaceById]);
+  }, [fetchWorkspaces]);
 
-  const updateWorkspace = useCallback((id: string, data: Partial<Workspace>) => {
-    const updated = allWorkspaces.map(w => w?.id === id ? { ...w, ...data } : w);
-    setAllWorkspaces(updated);
-    saveWorkspacesToStorage(updated);
-  }, [allWorkspaces]);
+  const updateWorkspace = useCallback(async (id: string, data: Partial<Workspace>) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const apiData = mapWorkspaceUpdateToApi(data);
+      await workspaceApi.update(id, apiData);
+      
+      // Update local state optimistically
+      setAllWorkspaces(prev => 
+        prev.map(w => w?.id === id ? { ...w, ...data } : w)
+      );
+    } catch (err: any) {
+      const message = err?.message || 'Failed to update workspace';
+      setError(message);
+      // Refresh to get server state
+      await fetchWorkspaces();
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWorkspaces]);
 
-  const deleteWorkspace = useCallback((id: string) => {
-    const updated = allWorkspaces.filter(w => w?.id !== id);
-    setAllWorkspaces(updated);
-    saveWorkspacesToStorage(updated);
-  }, [allWorkspaces]);
+  const deleteWorkspace = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await workspaceApi.delete(id);
+      
+      // Remove from local state
+      setAllWorkspaces(prev => prev.filter(w => w?.id !== id));
+      
+      // Clear active workspace if it was deleted
+      if (activeWorkspaceId === id) {
+        const remaining = allWorkspaces.filter(w => w.id !== id);
+        const nextId = remaining.length > 0 ? remaining[0].id : null;
+        setActiveWorkspaceId(nextId);
+        if (nextId) localStorage.setItem('active_workspace_id', nextId);
+        else localStorage.removeItem('active_workspace_id');
+      }
+    } catch (err: any) {
+      const message = err?.message || 'Failed to delete workspace';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [activeWorkspaceId, allWorkspaces]);
+
+  const refreshWorkspaces = useCallback(async () => {
+    return fetchWorkspaces();
+  }, [fetchWorkspaces]);
+
+  const addWorkspaceMember = useCallback(async (workspaceId: string, memberId: string, roleId?: string) => {
+    try {
+      await workspaceApi.addMember(workspaceId, { member_id: memberId, role_id: roleId || null });
+      // Refresh workspaces to update member counts
+      await fetchWorkspaces();
+    } catch (err: any) {
+      const message = err?.message || 'Failed to add member to workspace';
+      setError(message);
+      throw err;
+    }
+  }, [fetchWorkspaces]);
+
+  const removeWorkspaceMember = useCallback(async (workspaceId: string, memberId: string) => {
+    try {
+      await workspaceApi.removeMember(workspaceId, memberId);
+      // Refresh workspaces to update member counts
+      await fetchWorkspaces();
+    } catch (err: any) {
+      const message = err?.message || 'Failed to remove member from workspace';
+      setError(message);
+      throw err;
+    }
+  }, [fetchWorkspaces]);
+
+  const getWorkspaceMembers = useCallback(async (workspaceId: string) => {
+    try {
+      const response = await workspaceApi.listMembers(workspaceId, { page: 1, page_size: 100 });
+      return response.items;
+    } catch (err: any) {
+      console.error('Error fetching workspace members:', err);
+      return [];
+    }
+  }, []);
 
   return (
     <WorkspaceContext.Provider value={{
       workspaces: filteredWorkspaces,
       activeWorkspace,
+      loading,
+      error,
       setActiveWorkspaceById,
       createWorkspace,
       updateWorkspace,
-      deleteWorkspace
+      deleteWorkspace,
+      refreshWorkspaces,
+      addWorkspaceMember,
+      removeWorkspaceMember,
+      getWorkspaceMembers
     }}>
       {children}
     </WorkspaceContext.Provider>

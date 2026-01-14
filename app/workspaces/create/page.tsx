@@ -28,6 +28,8 @@ import { Select } from '../../../components/ui/Select';
 import { Card } from '../../../components/ui/Card';
 import { Modal } from '../../../components/ui/Modal';
 import { cn } from '../../../utils/cn';
+import { uploadAsset } from '../../../utils/api';
+import { workspaceApi } from '../../../services/workspaceApi';
 
 const THEMES = [
   { id: 'ocean', name: 'Ocean', color: 'bg-indigo-500' },
@@ -49,7 +51,7 @@ const CreateWorkspacePage: React.FC = () => {
   const workspaceId = searchParams.get('id');
   const isEditMode = !!workspaceId;
 
-  const { workspaces, createWorkspace, updateWorkspace } = useWorkspace();
+  const { workspaces, createWorkspace, updateWorkspace, addWorkspaceMember, removeWorkspaceMember, getWorkspaceMembers } = useWorkspace();
   const { user } = useAuth();
   const { members, updateMember } = useTeam();
   const { t, isRTL } = useTranslation();
@@ -64,6 +66,9 @@ const CreateWorkspacePage: React.FC = () => {
   const [activeTheme, setActiveTheme] = useState('ocean');
   const [activeIcon, setActiveIcon] = useState('camera');
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoAssetUrl, setLogoAssetUrl] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   
   const [settings, setSettings] = useState({
     photoGallery: true,
@@ -81,35 +86,43 @@ const CreateWorkspacePage: React.FC = () => {
 
   // Initialize form and selected members in Edit Mode
   useEffect(() => {
-    if (isEditMode && workspaceId) {
-      const workspace = workspaces.find(w => w.id === workspaceId);
-      if (workspace) {
-        setName(workspace.name);
-        setUrl(workspace.url || '');
-        setStudioType(workspace.studioType || 'Wedding Photography');
-        setTimezone(workspace.timezone || 'Pacific Standard Time (PST)');
-        setCurrency(workspace.currency || 'USD ($)');
-        setActiveTheme(workspace.colorTheme || 'ocean');
-        setActiveIcon(workspace.iconType || 'camera');
-        setLogoPreview(workspace.logo || null);
-        if (workspace.settings) {
-          setSettings(workspace.settings);
-        }
+    const loadWorkspaceData = async () => {
+      if (isEditMode && workspaceId) {
+        const workspace = workspaces.find(w => w.id === workspaceId);
+        if (workspace) {
+          setName(workspace.name);
+          setUrl(workspace.url || '');
+          setStudioType(workspace.studioType || 'Wedding Photography');
+          setTimezone(workspace.timezone || 'Pacific Standard Time (PST)');
+          setCurrency(workspace.currency || 'USD ($)');
+          setActiveTheme(workspace.colorTheme || 'ocean');
+          setActiveIcon(workspace.iconType || 'camera');
+          setLogoPreview(workspace.logo || null);
+          setLogoAssetUrl(workspace.logo || null);
+          if (workspace.settings) {
+            setSettings(workspace.settings);
+          }
 
-        // Find members already assigned to this workspace
-        const assignedIds = members
-          .filter(m => m.allowedWorkspaceIds?.includes(workspace.id))
-          .map(m => m.id);
-        setSelectedMemberIds(new Set(assignedIds));
-      }
-    } else if (user) {
-        // In Create Mode, ensure the owner is selected
-        const owner = members.find(m => m.email === user.email);
-        if (owner) {
-            setSelectedMemberIds(new Set([owner.id]));
+          // Fetch workspace members from API
+          try {
+            const workspaceMembers = await getWorkspaceMembers(workspaceId);
+            const memberIds = workspaceMembers.map(m => m.member_id);
+            setSelectedMemberIds(new Set(memberIds));
+          } catch (error) {
+            console.error('Error loading workspace members:', error);
+          }
         }
-    }
-  }, [isEditMode, workspaceId, workspaces, members, user]);
+      } else if (user) {
+          // In Create Mode, ensure the owner is selected
+          const owner = members.find(m => m.email === user.email);
+          if (owner) {
+              setSelectedMemberIds(new Set([owner.id]));
+          }
+      }
+    };
+
+    loadWorkspaceData();
+  }, [isEditMode, workspaceId, workspaces, members, user, getWorkspaceMembers]);
 
   const slugify = (text: string) => {
     return text
@@ -130,18 +143,39 @@ const CreateWorkspacePage: React.FC = () => {
     }
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+
+    // Set preview immediately for better UX
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Store file for upload on save
+    setLogoFile(file);
+    
+    // Optionally upload immediately (uncomment if you want immediate upload)
+    // setIsUploadingLogo(true);
+    // try {
+    //   const result = await uploadAsset({
+    //     filename: file.name,
+    //     content_type: file.type,
+    //     asset_type: 'logo',
+    //     workspace_id: isEditMode ? workspaceId : null
+    //   }, file);
+    //   setLogoAssetUrl(result.asset_url);
+    // } catch (error) {
+    //   console.error('Error uploading logo:', error);
+    //   alert('Failed to upload logo. Please try again.');
+    // } finally {
+    //   setIsUploadingLogo(false);
+    // }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name) return;
 
     // Check for duplicate name
@@ -154,46 +188,93 @@ const CreateWorkspacePage: React.FC = () => {
         setNameError('A workspace with this name already exists. Please choose a different name.');
         return;
     }
-    
-    const targetWsId = isEditMode && workspaceId ? workspaceId : `w_${Date.now()}`;
-    
-    const workspaceData = {
-      id: targetWsId,
-      name,
-      description: `Workspace for ${studioType}`,
-      url,
-      studioType,
-      timezone,
-      currency,
-      colorTheme: activeTheme,
-      logo: logoPreview || undefined,
-      settings,
-      status: 'Active' as const,
-      iconType: activeIcon as any
-    };
 
-    if (isEditMode && workspaceId) {
-      updateWorkspace(workspaceId, workspaceData);
-    } else {
-      createWorkspace(workspaceData);
-    }
-
-    // Sync member permissions
-    members.forEach(member => {
-        const isSelected = selectedMemberIds.has(member.id);
-        const currentWS = member.allowedWorkspaceIds || [];
-        const hasAccess = currentWS.includes(targetWsId);
-
-        if (isSelected && !hasAccess) {
-            // Add access
-            updateMember(member.id, { allowedWorkspaceIds: [...currentWS, targetWsId] });
-        } else if (!isSelected && hasAccess && !member.isOwner) {
-            // Remove access (never remove owner)
-            updateMember(member.id, { allowedWorkspaceIds: currentWS.filter(id => id !== targetWsId) });
+    try {
+      // Upload logo to S3 if a new file was selected
+      let finalLogoUrl = logoAssetUrl;
+      if (logoFile) {
+        setIsUploadingLogo(true);
+        try {
+          const uploadResult = await uploadAsset({
+            filename: logoFile.name,
+            content_type: logoFile.type,
+            asset_type: 'logo',
+            workspace_id: isEditMode ? workspaceId : null
+          }, logoFile);
+          finalLogoUrl = uploadResult.asset_url;
+        } catch (uploadError) {
+          console.error('Error uploading logo:', uploadError);
+          alert('Failed to upload logo. Saving workspace without logo.');
+          finalLogoUrl = null;
+        } finally {
+          setIsUploadingLogo(false);
         }
-    });
+      }
+    
+      const workspaceData = {
+        name,
+        description: `Workspace for ${studioType}`,
+        url,
+        studioType,
+        timezone,
+        currency,
+        colorTheme: activeTheme,
+        logo: finalLogoUrl || undefined,
+        settings,
+        status: 'Active' as const,
+        iconType: activeIcon as any
+      };
 
-    navigate('/workspaces');
+      let savedWorkspaceId = workspaceId;
+
+      if (isEditMode && workspaceId) {
+        await updateWorkspace(workspaceId, workspaceData);
+      } else {
+        await createWorkspace(workspaceData);
+        // Get the newly created workspace ID by fetching updated list
+        const updatedWorkspaces = await workspaceApi.list({ page: 1, page_size: 100 });
+        const newWorkspace = updatedWorkspaces.items.find(w => w.name === name);
+        savedWorkspaceId = newWorkspace?.id || null;
+      }
+
+      // Sync workspace members via API
+      if (savedWorkspaceId) {
+        try {
+          // Get current members from API
+          const currentMembers = await getWorkspaceMembers(savedWorkspaceId);
+          const currentMemberIds = new Set(currentMembers.map(m => m.member_id));
+
+          // Add new members
+          for (const memberId of selectedMemberIds) {
+            if (!currentMemberIds.has(memberId)) {
+              try {
+                await addWorkspaceMember(savedWorkspaceId, memberId);
+              } catch (err) {
+                console.error(`Failed to add member ${memberId}:`, err);
+              }
+            }
+          }
+
+          // Remove members that were deselected
+          for (const currentMemberId of currentMemberIds) {
+            if (!selectedMemberIds.has(currentMemberId)) {
+              try {
+                await removeWorkspaceMember(savedWorkspaceId, currentMemberId);
+              } catch (err) {
+                console.error(`Failed to remove member ${currentMemberId}:`, err);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error syncing workspace members:', err);
+        }
+      }
+
+      navigate('/workspaces');
+    } catch (error) {
+      console.error('Error saving workspace:', error);
+      // Error is already handled in the context
+    }
   };
 
   const toggleSetting = (key: keyof typeof settings) => {
@@ -467,8 +548,12 @@ const CreateWorkspacePage: React.FC = () => {
             <Button variant="outline" className="h-12 border-slate-200 text-slate-700 font-black rounded-xl text-[10px] uppercase tracking-widest px-8 hover:bg-slate-50">
                 {t('save_draft')}
             </Button>
-            <Button onClick={handleSave} className="bg-[#0F172A] hover:bg-[#1E293B] text-white h-12 rounded-xl shadow-lg shadow-slate-200 font-black text-[10px] uppercase tracking-widest px-10 active:scale-95 transition-all">
-              {isEditMode ? t('update_studio') : t('create_studio')}
+            <Button 
+              onClick={handleSave} 
+              disabled={isUploadingLogo}
+              className="bg-[#0F172A] hover:bg-[#1E293B] text-white h-12 rounded-xl shadow-lg shadow-slate-200 font-black text-[10px] uppercase tracking-widest px-10 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUploadingLogo ? 'Uploading Logo...' : (isEditMode ? t('update_studio') : t('create_studio'))}
             </Button>
           </div>
         </div>
