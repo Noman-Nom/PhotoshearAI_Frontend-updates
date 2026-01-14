@@ -26,7 +26,7 @@ interface TeamContextType {
   fetchRoles: () => Promise<void>;
   fetchInvitations: () => Promise<void>;
   addMember: (member: Omit<TeamMember, 'id' | 'eventsCount' | 'avatarColor' | 'initials'>) => void;
-  updateMember: (id: string, data: Partial<TeamMember>) => Promise<void>;
+  updateMember: (id: string, data: Partial<TeamMember> & { roleId?: string; workspaceIds?: string[] }) => Promise<void>;
   deleteMember: (id: string) => Promise<void>;
   inviteMember: (data: {
     email: string;
@@ -202,7 +202,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Update member via API
-  const updateMember = useCallback(async (id: string, data: Partial<TeamMember>) => {
+  const updateMember = useCallback(async (id: string, data: Partial<TeamMember> & { roleId?: string; workspaceIds?: string[] }) => {
     try {
       setError(null);
       const apiData = mapTeamMemberUpdateToAPI(data);
