@@ -243,11 +243,13 @@ export interface SharedEvent {
   customerEmail?: string;
 }
 
+// NOTE: Workspace localStorage functions are deprecated
+// Workspaces are now managed via API (see contexts/WorkspaceContext.tsx)
+// These functions are kept temporarily for backward compatibility
 const WS_STORAGE_KEY = 'photmo_workspaces_v1';
-const EVENT_STORAGE_KEY = 'shared_events_v2';
-const GUEST_REGISTRY_KEY = 'photmo_guest_registry_v1';
 
 export const loadWorkspaces = (): Workspace[] => {
+  console.warn('loadWorkspaces is deprecated - workspaces are now loaded from API');
   try {
     const stored = localStorage.getItem(WS_STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
@@ -257,8 +259,12 @@ export const loadWorkspaces = (): Workspace[] => {
 };
 
 export const saveWorkspacesToStorage = (workspaces: Workspace[]) => {
-  localStorage.setItem(WS_STORAGE_KEY, JSON.stringify(workspaces));
+  console.warn('saveWorkspacesToStorage is deprecated - workspaces are now saved via API');
+  // Keep for backward compatibility but don't use
 };
+
+const EVENT_STORAGE_KEY = 'shared_events_v2';
+const GUEST_REGISTRY_KEY = 'photmo_guest_registry_v1';
 
 const loadEvents = (): SharedEvent[] => {
   try {
