@@ -3,32 +3,54 @@ import { getApiBaseUrl } from './subdomain';
 const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'auth_token';
 
-// Get token from cookie or localStorage (for backwards compatibility)
-export const getAuthToken = () => {
-  // Try to get from cookie first
+/**
+ * Get the root domain for cookie sharing
+ * Returns .fotoshareai.com for production, empty for localhost
+ */
+const getCookieDomain = (): string => {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return ''; // No domain for localhost
+  }
+  return '.fotoshareai.com';
+};
+
+/**
+ * Get auth token from cookie (shared across all *.fotoshareai.com subdomains)
+ */
+export const getAuthToken = (): string | null => {
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
     const [key, value] = cookie.trim().split('=');
-    if (key === TOKEN_KEY) {
+    if (key === TOKEN_KEY && value) {
       return decodeURIComponent(value);
     }
   }
-  // Fallback to localStorage for backwards compatibility
-  return localStorage.getItem(TOKEN_KEY);
+  return null;
 };
 
-// Set token in cookie with domain sharing across *.fotoshareai.com
+/**
+ * Set auth token in cookie with cross-subdomain sharing
+ * Uses domain=.fotoshareai.com to share across all subdomains
+ */
 export const setAuthToken = (token: string | null) => {
+  const domain = getCookieDomain();
+  const secure = window.location.protocol === 'https:' ? '; secure' : '';
+  
   if (token) {
-    // Set cookie with domain=.fotoshareai.com to share across all subdomains
-    // Also set in localStorage for backwards compatibility
-    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; domain=.fotoshareai.com; max-age=2592000; secure; samesite=strict`;
-    localStorage.setItem(TOKEN_KEY, token);
+    // Set cookie with 30 days expiry, shared across all subdomains
+    const cookieValue = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/${domain ? `; domain=${domain}` : ''}; max-age=2592000${secure}; samesite=lax`;
+    document.cookie = cookieValue;
   } else {
-    // Clear from both cookie and localStorage
-    // Delete cookie by setting max-age=0
-    document.cookie = `${TOKEN_KEY}=; path=/; domain=.fotoshareai.com; max-age=0; secure; samesite=strict`;
-    localStorage.removeItem(TOKEN_KEY);
+    // Clear cookie by setting max-age=0 for all possible domains
+    // Clear with domain
+    if (domain) {
+      document.cookie = `${TOKEN_KEY}=; path=/; domain=${domain}; max-age=0${secure}; samesite=lax`;
+    }
+    // Clear without domain (for current subdomain only)
+    document.cookie = `${TOKEN_KEY}=; path=/; max-age=0${secure}; samesite=lax`;
+    // Also clear from current hostname explicitly
+    document.cookie = `${TOKEN_KEY}=; path=/; domain=${window.location.hostname}; max-age=0${secure}; samesite=lax`;
   }
 };
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';

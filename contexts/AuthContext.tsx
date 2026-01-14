@@ -291,10 +291,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // First, call backend to revoke the session
+    try {
+      await api.post('/api/v1/auth/logout', undefined, true);
+    } catch {
+      // Ignore errors - we still want to clear local state
+    }
+    
+    // Clear all local state
     setUser(null);
     setAuthToken(null);
-    api.post('/api/v1/auth/logout', undefined, true).catch(() => undefined);
     localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
     localStorage.removeItem(PENDING_RESET_KEY);
@@ -305,15 +312,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setResetStepState('EMAIL');
     setNeedsProfileCompletion(false);
     setStatus(AuthStatus.IDLE);
-    
-    // Trigger logout across all tabs and subdomains
-    // This event will be caught by the storage listener below
-    localStorage.setItem('auth_logout_signal', JSON.stringify({ timestamp: Date.now() }));
   }, []);
 
+  // Validate token on mount and when user navigates to this page
   useEffect(() => {
     const token = getAuthToken();
-    if (!token) return;
+    if (!token) {
+      // No token - ensure we're logged out
+      setUser(null);
+      localStorage.removeItem(CURRENT_USER_KEY);
+      return;
+    }
+    
     setStatus(AuthStatus.LOADING);
     api.get('/api/v1/auth/me', true)
       .then((resp) => {
@@ -325,6 +335,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStatus(AuthStatus.SUCCESS);
       })
       .catch(() => {
+        // Token is invalid (revoked or expired) - clear everything
         setAuthToken(null);
         localStorage.removeItem(CURRENT_USER_KEY);
         setUser(null);
@@ -334,14 +345,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
   }, []);
 
-  // Listen for logout signals from other tabs
+  // Cross-subdomain token validation polling
+  // Since localStorage doesn't sync across subdomains, we poll the cookie
+  // This detects when user logs out from another subdomain
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      // Check if logout signal was triggered
-      if (e.key === 'auth_logout_signal' && e.newValue) {
-        // Clear all auth data from all subdomains
+    let lastToken = getAuthToken();
+    
+    const checkTokenChange = () => {
+      const currentToken = getAuthToken();
+      
+      // Token was removed (logout from another subdomain)
+      if (lastToken && !currentToken) {
         setUser(null);
-        setAuthToken(null);
         localStorage.removeItem(CURRENT_USER_KEY);
         localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
         localStorage.removeItem(PENDING_RESET_KEY);
@@ -353,11 +368,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setNeedsProfileCompletion(false);
         setStatus(AuthStatus.IDLE);
       }
+      // Token was added (login from another subdomain)
+      else if (!lastToken && currentToken && !user) {
+        // Validate the new token
+        api.get('/api/v1/auth/me', true)
+          .then((resp) => {
+            if (resp) {
+              const mappedUser = mapUserFromApi(resp);
+              setUser(mappedUser);
+              localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+            }
+            setStatus(AuthStatus.SUCCESS);
+          })
+          .catch(() => {
+            setAuthToken(null);
+            setStatus(AuthStatus.IDLE);
+          });
+      }
+      
+      lastToken = currentToken;
     };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    
+    // Poll every 2 seconds for cross-subdomain changes
+    const interval = setInterval(checkTokenChange, 2000);
+    
+    return () => clearInterval(interval);
+  }, [user]);
 
   return (
     <AuthContext.Provider
