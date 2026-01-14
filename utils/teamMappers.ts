@@ -46,6 +46,7 @@ export function mapTeamMemberListToFrontend(
       day: 'numeric',
       year: 'numeric',
     }),
+    allowedWorkspaceIds: apiMember.workspace_ids || [],
   };
 }
 
@@ -72,6 +73,7 @@ export function mapTeamMemberDetailToFrontend(
       day: 'numeric',
       year: 'numeric',
     }),
+    allowedWorkspaceIds: apiMember.workspace_ids || [],
   };
 }
 
@@ -79,7 +81,7 @@ export function mapTeamMemberDetailToFrontend(
  * Map frontend TeamMember update to API format
  */
 export function mapTeamMemberUpdateToAPI(
-  update: Partial<TeamMember> & { roleId?: string }
+  update: Partial<TeamMember> & { roleId?: string; workspaceIds?: string[] }
 ): TeamMemberUpdateAPI {
   const apiUpdate: TeamMemberUpdateAPI = {};
 
@@ -97,6 +99,9 @@ export function mapTeamMemberUpdateToAPI(
   }
   if (update.accessLevel !== undefined) {
     apiUpdate.access_level = update.accessLevel;
+  }
+  if (update.workspaceIds !== undefined) {
+    apiUpdate.workspace_ids = update.workspaceIds || null;
   }
 
   return apiUpdate;
