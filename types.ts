@@ -11,11 +11,14 @@ export interface User {
   mfaEnabled?: boolean;
   mfaMethod?: 'Email' | 'Authenticator' | 'SMS';
   status?: string;
+  isOwner?: boolean;
 }
 
 export interface AuthResponse {
   user: User;
   token: string;
+  subdomain: string;
+  isOwner: boolean;
 }
 
 export interface Country {

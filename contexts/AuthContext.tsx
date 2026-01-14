@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { User, AuthStatus } from '../types';
 import { api, setAuthToken, getAuthToken } from '../utils/api';
 import { mapUserFromApi } from '../utils/mappers';
+import { getSubdomain, redirectToSubdomain, isOnMainDomain } from '../utils/subdomain';
 
 type ResetStep = 'EMAIL' | 'OTP' | 'PASSWORD' | 'SUCCESS';
 
@@ -78,13 +79,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (data: any) => {
     setStatus(AuthStatus.LOADING);
     try {
-      const resp = await api.post('/api/v1/auth/login', data, false);
+      // Extract subdomain from current URL
+      const currentSubdomain = getSubdomain();
+      
+      // Add subdomain to login request
+      const loginData = {
+        ...data,
+        subdomain: currentSubdomain
+      };
+      
+      const resp = await api.post('/api/v1/auth/login', loginData, false);
       if (resp?.token) setAuthToken(resp.token);
       if (resp?.user) {
         const mappedUser = mapUserFromApi(resp.user);
         setUser(mappedUser);
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+        
+        // Store isOwner flag in user object
+        if (resp.isOwner !== undefined) {
+          mappedUser.isOwner = resp.isOwner;
+          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+        }
       }
+      
+      // Handle redirect after login
+      if (resp?.subdomain) {
+        // If logged in from app.fotoshareai.com, redirect to user's org subdomain
+        if (isOnMainDomain()) {
+          redirectToSubdomain(resp.subdomain);
+        }
+        // If on specific subdomain, stay there (no redirect needed)
+      }
+      
       setStatus(AuthStatus.SUCCESS);
     } catch (err: any) {
       setStatus(AuthStatus.ERROR);
