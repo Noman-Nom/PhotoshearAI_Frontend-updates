@@ -75,6 +75,7 @@ import { SHARED_EVENTS, loadGuestRegistry } from '../../constants';
 import { formatBytes } from '../../utils/formatters';
 import { EMAIL_REGEX } from '../../utils/validators';
 import { GuestRecord, Role } from '../../types';
+import { showToast } from '../../utils/toast';
 
 type TabType = 'WorkSpaces' | 'Roles' | 'TeamMembers' | 'GuestData' | 'Calendar';
 
@@ -163,7 +164,7 @@ const WorkspacesPage: React.FC = () => {
   const { user, logout } = useAuth();
   const { t, isRTL } = useTranslation();
   const { workspaces, setActiveWorkspaceById, deleteWorkspace } = useWorkspace();
-  const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember } = useTeam();
+  const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember, createRole, updateRole, deleteRole, fetchRoles, fetchMembers } = useTeam();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Tab State
@@ -187,7 +188,9 @@ const WorkspacesPage: React.FC = () => {
   }, [members, user]);
 
   const userRole = currentUserProfile?.role || 'Studio Member';
-  const isAdmin = currentUserProfile?.isOwner || ['Owner', 'SuperAdmin / Owner', 'Account Manager'].includes(userRole);
+  // Always grant admin access to the org owner/creator, even if not in members list yet
+  const isOwnerAccount = user?.email && user?.companyName; // If user has company, they're the org owner
+  const isAdmin = isOwnerAccount || currentUserProfile?.isOwner || ['Owner', 'SuperAdmin / Owner', 'Account Manager'].includes(userRole);
   const canManageStudioMembers = isAdmin || userRole === 'Studio Manager';
 
   const assignableRoles = useMemo(() => {
@@ -212,13 +215,6 @@ const WorkspacesPage: React.FC = () => {
 
   const rolesWithUserCounts = useMemo(() => {
     return roles.map(role => {
-      const count = members.filter(m => {
-        if (role.id === 'role_owner') {
-          return m.isOwner || m.role === 'Owner' || m.role === 'SuperAdmin / Owner';
-        }
-        return m.role === role.name;
-      }).length;
-
       let permissions = role.permissions;
       if (role.id === 'role_owner') permissions = PERMISSIONS_LIST.flatMap(g => g.permissions.map(p => p.id));
       else if (role.id === 'role_account_mgr' && permissions.length === 0) permissions = PERMISSIONS_LIST.flatMap(g => g.permissions.map(p => p.id)).filter(id => !['ws_delete', 'role_delete', 'branding_remove'].includes(id));
@@ -232,11 +228,11 @@ const WorkspacesPage: React.FC = () => {
 
       return {
         ...role,
-        permissions,
-        memberCount: count
+        permissions
+        // Keep memberCount from API instead of recalculating
       };
     });
-  }, [roles, members]);
+  }, [roles]);
 
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
@@ -245,6 +241,7 @@ const WorkspacesPage: React.FC = () => {
   const [roleFormDescription, setRoleFormDescription] = useState('');
   const [roleFormLevel, setRoleFormLevel] = useState<'organization' | 'studio'>('studio');
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
+  const [isSavingRole, setIsSavingRole] = useState(false);
 
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
@@ -321,7 +318,7 @@ const WorkspacesPage: React.FC = () => {
         ...ws,
         realEventsCount: wsEvents.length,
         realStorage: storage,
-        realMembersCount: relevantMembers.length,
+        realMembersCount: ws.membersCount, // Use API member count instead of calculating
         memberAvatars: relevantMembers.map(m => `https://ui-avatars.com/api/?name=${m.firstName}+${m.lastName}&background=random&color=fff`)
       };
     }).filter(Boolean);
@@ -343,9 +340,13 @@ const WorkspacesPage: React.FC = () => {
 
   const filteredRoles = rolesWithUserCounts.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const handleOpenWorkspace = (id: string) => {
-    setActiveWorkspaceById(id);
-    navigate('/dashboard');
+  const handleOpenWorkspace = async (id: string) => {
+    try {
+      await setActiveWorkspaceById(id);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Error setting active workspace:', error);
+    }
   };
 
   const togglePermission = (id: string) => {
@@ -376,7 +377,7 @@ const WorkspacesPage: React.FC = () => {
     setIsRoleModalOpen(true);
   };
 
-  const handleSaveRole = () => {
+  const handleSaveRole = async () => {
     const trimmedName = roleFormName.trim();
     if (!trimmedName) return;
 
@@ -384,42 +385,49 @@ const WorkspacesPage: React.FC = () => {
     const reservedNames = ['owner', 'super admin', 'superadmin', 'administrator', 'root'];
     
     if (reservedNames.includes(normalizedName)) {
-      alert(`The name "${trimmedName}" is reserved for system use. Please choose a different title.`);
+      showToast({ message: `The name "${trimmedName}" is reserved for system use.`, type: 'error' });
       return;
     }
 
     const isDuplicate = roles.some(r => r.name.toLowerCase() === normalizedName && r.id !== editingRoleId);
     if (isDuplicate) {
-      alert(`A role with the name "${trimmedName}" already exists. Each role must have a unique name.`);
+      showToast({ message: `A role with the name "${trimmedName}" already exists.`, type: 'error' });
       return;
     }
 
-    if (editingRoleId) {
-      setRoles(prev => prev.map(r => r.id === editingRoleId ? {
-        ...r,
+    setIsSavingRole(true);
+    
+    try {
+      const roleData = {
         name: trimmedName,
         description: roleFormDescription.trim() || undefined,
         level: roleFormLevel,
         permissions: Array.from(selectedPermissions)
-      } : r));
-    } else {
-      const newRole: Role = {
-        id: `role_${Date.now()}`,
-        name: trimmedName,
-        description: roleFormDescription.trim() || undefined,
-        level: roleFormLevel,
-        permissions: Array.from(selectedPermissions),
-        memberCount: 0
       };
-      setRoles(prev => [...prev, newRole]);
-    }
 
-    setIsRoleModalOpen(false);
-    setRoleFormName('');
-    setRoleFormDescription('');
-    setRoleFormLevel('studio');
-    setSelectedPermissions(new Set());
-    setEditingRoleId(null);
+      if (editingRoleId) {
+        await updateRole(editingRoleId, roleData);
+        showToast({ message: `Role "${trimmedName}" updated successfully!`, type: 'success' });
+      } else {
+        await createRole(roleData);
+        showToast({ message: `Role "${trimmedName}" created successfully!`, type: 'success' });
+      }
+
+      // Refresh roles from API to get updated counts
+      await fetchRoles();
+      
+      setIsRoleModalOpen(false);
+      setRoleFormName('');
+      setRoleFormDescription('');
+      setRoleFormLevel('studio');
+      setSelectedPermissions(new Set());
+      setEditingRoleId(null);
+    } catch (error: any) {
+      console.error('Error saving role:', error);
+      showToast({ message: error.message || 'Failed to save role. Please try again.', type: 'error' });
+    } finally {
+      setIsSavingRole(false);
+    }
   };
 
   const handleEditMember = (member: any) => {
@@ -459,12 +467,15 @@ const WorkspacesPage: React.FC = () => {
     }
 
     if (editingMemberId) {
+      // Find role ID from role name
+      const selectedRole = roles.find(r => r.name === inviteForm.role);
       updateMember(editingMemberId, {
         firstName,
         lastName,
-        role: inviteForm.role,
-        allowedWorkspaceIds: isAllStudios ? workspaces.map(w => w.id) : inviteForm.selectedStudioIds,
+        roleId: selectedRole?.id,
+        accessLevel: isAllStudios ? 'Full Access' : 'Specific Event',
       });
+      // Note: allowedWorkspaceIds should be managed separately via workspace member API
     } else {
       inviteMember({
         email: inviteForm.email,
@@ -502,10 +513,17 @@ const WorkspacesPage: React.FC = () => {
       }
   };
 
-  const confirmDeleteRole = () => {
+  const confirmDeleteRole = async () => {
     if (roleToDelete && !roleToDelete.isSystem && membersWithRoleToDelete.length === 0) {
-      setRoles(prev => prev.filter(r => r.id !== roleToDelete.id));
-      setRoleToDelete(null);
+      try {
+        await deleteRole(roleToDelete.id);
+        showToast({ message: `Role "${roleToDelete.name}" deleted successfully!`, type: 'success' });
+        await fetchRoles();
+        setRoleToDelete(null);
+      } catch (error: any) {
+        console.error('Error deleting role:', error);
+        showToast({ message: error.message || 'Failed to delete role.', type: 'error' });
+      }
     }
   };
 
@@ -1005,7 +1023,10 @@ const WorkspacesPage: React.FC = () => {
                         <div key={member.id} className="flex flex-col sm:flex-row items-center justify-between gap-4 p-3 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:shadow-md">
                             <div className="flex items-center gap-3 min-w-0 flex-1 text-start"><div className={cn("w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black flex-shrink-0 shadow-sm", member.avatarColor || 'bg-slate-200 text-slate-500')}>{member.initials}</div><div className="min-w-0"><p className="text-xs font-bold text-slate-900 truncate uppercase tracking-tight">{member.firstName} {member.lastName}</p><p className="text-[10px] text-slate-400 truncate">{member.email}</p></div></div>
                             <div className="w-full sm:w-48">
-                                <Select value={member.role} onChange={(e) => updateMember(member.id, { role: e.target.value })} options={assignableRoles.map(r => ({ label: r.name.toUpperCase(), value: r.name }))} className="h-9 py-0 text-[10px] font-bold uppercase tracking-widest bg-slate-50 border-slate-200 focus:bg-white transition-all shadow-none" />
+                                <Select value={member.role} onChange={(e) => {
+                                  const selectedRole = assignableRoles.find(r => r.name === e.target.value);
+                                  if (selectedRole) updateMember(member.id, { roleId: selectedRole.id });
+                                }} options={assignableRoles.map(r => ({ label: r.name.toUpperCase(), value: r.name }))} className="h-9 py-0 text-[10px] font-bold uppercase tracking-widest bg-slate-50 border-slate-200 focus:bg-white transition-all shadow-none" />
                             </div>
                         </div>
                     ))}
@@ -1037,11 +1058,9 @@ const WorkspacesPage: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="px-6 py-5 md:px-10 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-6"><div className="flex flex-col items-center sm:items-start"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">ACTIVE CONFIG</span><span className="text-sm font-bold text-blue-600 uppercase tracking-widest">{selectedPermissions.size} PERMISSIONS</span></div><div className="flex items-center gap-6 w-full sm:w-auto"><button onClick={() => setIsRoleModalOpen(false)} className="text-[12px] font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-widest">Cancel</button><Button onClick={handleSaveRole} disabled={!roleFormName.trim()} className="bg-[#0F172A] hover:bg-slate-900 text-white font-bold px-12 h-12 rounded-xl shadow-xl active:scale-95 text-[11px] uppercase tracking-[0.2em] w-full sm:w-auto">SAVE</Button></div></div>
+          <div className="px-6 py-5 md:px-10 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-6"><div className="flex flex-col items-center sm:items-start"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">ACTIVE CONFIG</span><span className="text-sm font-bold text-blue-600 uppercase tracking-widest">{selectedPermissions.size} PERMISSIONS</span></div><div className="flex items-center gap-6 w-full sm:w-auto"><button onClick={() => setIsRoleModalOpen(false)} disabled={isSavingRole} className="text-[12px] font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-widest disabled:opacity-50">Cancel</button><Button onClick={handleSaveRole} disabled={!roleFormName.trim() || isSavingRole} isLoading={isSavingRole} className="bg-[#0F172A] hover:bg-slate-900 text-white font-bold px-12 h-12 rounded-xl shadow-xl active:scale-95 text-[11px] uppercase tracking-[0.2em] w-full sm:w-auto">SAVE</Button></div></div>
         </div>
-      </Modal>
-
-      <Modal isOpen={!!memberToDelete} onClose={() => setMemberToDelete(null)} title={memberToDelete?.isPending ? "Cancel Invitation" : "Delete Member"}>
+      </Modal>      <Modal isOpen={!!memberToDelete} onClose={() => setMemberToDelete(null)} title={memberToDelete?.isPending ? "Cancel Invitation" : "Delete Member"}>
         <div className="flex flex-col items-center text-center space-y-4">
           <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2">
             <AlertTriangle className="text-red-600 w-8 h-8" />
@@ -1087,10 +1106,15 @@ const WorkspacesPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-4 w-full pt-4">
             <Button variant="outline" onClick={() => setWorkspaceToDelete(null)} className="w-full h-12 rounded-xl text-[11px] font-black uppercase tracking-widest border-slate-200">Cancel</Button>
             <Button 
-                onClick={() => {
+                onClick={async () => {
                     if (workspaceToDelete) {
-                        deleteWorkspace(workspaceToDelete.id);
-                        setWorkspaceToDelete(null);
+                        try {
+                            await deleteWorkspace(workspaceToDelete.id);
+                            setWorkspaceToDelete(null);
+                        } catch (error) {
+                            console.error('Error deleting workspace:', error);
+                            // Error is already handled in the context
+                        }
                     }
                 }}
                 className="w-full h-12 rounded-xl text-[11px] font-black uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 transition-colors shadow-lg"
