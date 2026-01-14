@@ -46,6 +46,7 @@ import { useNavigate } from 'react-router-dom';
 import { TeamMember, PendingMember } from '../../types';
 import { SHARED_EVENTS } from '../../constants';
 import { useTranslation } from '../../contexts/LanguageContext';
+import { showToast } from '../../utils/toast';
 
 const TeamPage: React.FC = () => {
   const navigate = useNavigate();
@@ -76,9 +77,10 @@ const TeamPage: React.FC = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedDetailMember, setSelectedDetailMember] = useState<TeamMember | PendingMember | null>(null);
   const [isEditingRole, setIsEditingRole] = useState(false);
-  const [roleEditValue, setRoleEditValue] = useState('');
+  const [roleEditValue, setRoleEditValue] = useState(''); // This will store role_id
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string, type: 'Registered' | 'Pending' } | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
 
   const studioLevelRoles = useMemo(() => {
     return roles.filter(r => r.level === 'studio' && !r.isSystem);
@@ -120,40 +122,78 @@ const TeamPage: React.FC = () => {
 
   const handleOpenAddModal = () => { if (!canAddMembers) { alert("Access denied."); return; } setAddMode('EXISTING'); setGlobalSearch(''); setIsAddModalOpen(true); };
 
-  const handleAddExistingToStudio = (member: TeamMember) => {
+  const handleAddExistingToStudio = async (member: TeamMember) => {
     if (!activeWorkspace) return;
-    const role = selectedStudioRoles[member.id] || 'Studio Member';
-    updateMember(member.id, { role: role, allowedWorkspaceIds: Array.from(new Set([...(member.allowedWorkspaceIds || []), activeWorkspace.id])) });
-    setIsAddModalOpen(false);
+    const roleId = selectedStudioRoles[member.id] || null;
+    try {
+      // Update member with role_id instead of role name
+      await updateMember(member.id, { 
+        roleId: roleId,
+        allowedWorkspaceIds: Array.from(new Set([...(member.allowedWorkspaceIds || []), activeWorkspace.id])) 
+      });
+      showToast({ message: `${member.firstName} ${member.lastName} added to workspace!`, type: 'success' });
+      setIsAddModalOpen(false);
+    } catch (error) {
+      console.error('Error adding member to workspace:', error);
+      showToast({ message: 'Failed to add member to workspace.', type: 'error' });
+    }
   };
 
-  const handleSendInvite = () => {
+  const handleSendInvite = async () => {
     if (!inviteForm.fullName || !inviteForm.email || !inviteForm.role || !activeWorkspace) return;
     const names = inviteForm.fullName.trim().split(' ');
-    // FIX: Using user's companyName instead of activeWorkspace.name for the Organization Name field
-    inviteMember({ 
-      email: inviteForm.email, 
-      firstName: names[0], 
-      lastName: names.slice(1).join(' '), 
-      role: inviteForm.role, 
-      accessLevel: 'Full Access', 
-      allowedWorkspaceIds: [activeWorkspace.id], 
-      org: user?.companyName || 'Photmo Inc.', 
-      accessScope: activeWorkspace.name, 
-      message: inviteForm.message 
-    } as any);
-    setIsAddModalOpen(false);
-    setActiveTab('Pending');
+    try {
+      // Find role by name and use its ID
+      const selectedRole = studioLevelRoles.find(r => r.id === inviteForm.role);
+      await inviteMember({ 
+        email: inviteForm.email, 
+        firstName: names[0], 
+        lastName: names.slice(1).join(' '), 
+        roleId: selectedRole?.id || null,
+        accessLevel: 'Full Access', 
+        workspaceIds: [activeWorkspace.id], 
+        message: inviteForm.message 
+      });
+      showToast({ message: 'Invitation sent successfully!', type: 'success' });
+      setIsAddModalOpen(false);
+      setActiveTab('Pending');
+    } catch (error) {
+      console.error('Error sending invitation:', error);
+      showToast({ message: 'Failed to send invitation.', type: 'error' });
+    }
   };
 
-  const handleOpenDetail = (member: TeamMember | PendingMember) => { setSelectedDetailMember(member); setIsEditingRole(false); setRoleEditValue(member.role || 'Studio Member'); setIsDetailModalOpen(true); };
+  const handleOpenDetail = (member: TeamMember | PendingMember) => { 
+    setSelectedDetailMember(member); 
+    setIsEditingRole(false); 
+    // Store the role_id for editing
+    setRoleEditValue((member as any).roleId || ''); 
+    setIsDetailModalOpen(true); 
+  };
 
-  const handleUpdateRole = () => {
+  const handleUpdateRole = async () => {
     if (!selectedDetailMember) return;
-    if (activeTab === 'Registered') updateMember(selectedDetailMember.id, { role: roleEditValue });
-    else updatePendingMember(selectedDetailMember.id, { role: roleEditValue });
-    setSelectedDetailMember({ ...selectedDetailMember, role: roleEditValue });
-    setIsEditingRole(false);
+    
+    setIsUpdatingRole(true);
+    try {
+      if (activeTab === 'Registered') {
+        // Send role_id to API
+        await updateMember(selectedDetailMember.id, { roleId: roleEditValue });
+        showToast({ message: 'Role updated successfully!', type: 'success' });
+      } else {
+        updatePendingMember(selectedDetailMember.id, { role: roleEditValue });
+        showToast({ message: 'Pending member role updated!', type: 'success' });
+      }
+      // Update local state with new role info
+      const updatedRole = roles.find(r => r.id === roleEditValue);
+      setSelectedDetailMember({ ...selectedDetailMember, role: updatedRole?.name || roleEditValue });
+      setIsEditingRole(false);
+    } catch (error: any) {
+      console.error('Error updating role:', error);
+      showToast({ message: error.message || 'Failed to update role.', type: 'error' });
+    } finally {
+      setIsUpdatingRole(false);
+    }
   };
 
   const handleDelete = (member: TeamMember | PendingMember, e?: React.MouseEvent) => { 
@@ -175,11 +215,11 @@ const TeamPage: React.FC = () => {
       return (m as TeamMember).firstName !== undefined;
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!itemToDelete || !activeWorkspace) return;
     
     const wsId = activeWorkspace.id;
-    const handleRemoval = (m: any, isPending: boolean) => {
+    const handleRemoval = async (m: any, isPending: boolean) => {
         // Logic: Remove ONLY this studio ID from the user's allowed list
         let currentWS = [...(m.allowedWorkspaceIds || [])].filter(id => id !== wsId);
         
@@ -187,19 +227,32 @@ const TeamPage: React.FC = () => {
         const wsEventIds = SHARED_EVENTS.filter(e => e.workspaceId === wsId).map(e => e.id);
         const nextEvents = (m.allowedEventIds || []).filter(id => !wsEventIds.includes(id));
         
-        if (isPending) {
-            updatePendingMember(m.id, { allowedWorkspaceIds: currentWS, allowedEventIds: nextEvents });
-        } else {
-            updateMember(m.id, { allowedWorkspaceIds: currentWS, allowedEventIds: nextEvents });
+        try {
+          if (isPending) {
+              updatePendingMember(m.id, { allowedWorkspaceIds: currentWS, allowedEventIds: nextEvents });
+          } else {
+              await updateMember(m.id, { allowedWorkspaceIds: currentWS, allowedEventIds: nextEvents });
+          }
+        } catch (error) {
+          console.error('Error updating member access:', error);
+          throw error;
         }
     };
 
     if (itemToDelete.type === 'Registered') { 
         const m = members.find(m => m.id === itemToDelete.id); 
-        if (m) handleRemoval(m, false); 
+        if (m) {
+          handleRemoval(m, false).catch(err => {
+            alert('Failed to remove member. Please try again.');
+          });
+        }
     } else { 
         const p = pendingMembers.find(p => p.id === itemToDelete.id); 
-        if (p) handleRemoval(p, true); 
+        if (p) {
+          handleRemoval(p, true).catch(err => {
+            alert('Failed to cancel invitation. Please try again.');
+          });
+        }
     }
     
     setIsDeleteModalOpen(false);
@@ -284,7 +337,7 @@ const TeamPage: React.FC = () => {
                               </div>
                             ) : (
                               <div className={cn("flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 transition-all", isRTL ? "justify-start" : "justify-end")}>
-                                {!isRegistered && (<button onClick={(e) => { e.stopPropagation(); resendInvitation(member.id); }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16}/></button>)}
+                                {!isRegistered && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); alert('Invitation resent successfully!'); } catch (err) { alert('Failed to resend invitation. Please try again.'); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16}/></button>)}
                                 <button onClick={(e) => handleDelete(member, e)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Remove from Studio"><Trash2 size={16}/></button>
                               </div>
                             )}
@@ -308,10 +361,10 @@ const TeamPage: React.FC = () => {
             {addMode === 'EXISTING' ? (
                 <div className="space-y-6">
                     <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} /><input type="text" placeholder="Search global team members..." value={globalSearch} onChange={e => setGlobalSearch(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-sm font-bold focus:ring-0 focus:border-slate-900 focus:bg-white outline-none text-start transition-all" /></div>
-                    <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-50 border-2 border-slate-50 rounded-3xl custom-scrollbar">{filteredGlobalMembers.length === 0 ? (<div className="py-20 text-center text-slate-300"><Users className="mx-auto mb-4 opacity-10" size={48} /><p className="text-[11px] font-black uppercase tracking-widest">Pool exhausted</p></div>) : (filteredGlobalMembers.map(m => (<div key={m.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-4 text-start"><div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-xs font-black shadow-sm", m.avatarColor)}>{m.initials}</div><div className="min-w-0"><h4 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{m.firstName} {m.lastName}</h4><p className="text-[10px] text-slate-400 font-bold font-mono truncate tracking-tight">{m.email}</p><span className="text-[8px] font-black uppercase text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md mt-1.5 inline-block tracking-[0.1em] border border-indigo-100/50">GLOBAL: {m.role}</span></div></div><div className="flex items-center gap-3"><div className="w-40 mr-2"><Select value={selectedStudioRoles[m.id] || 'Studio Member'} onChange={e => setSelectedStudioRoles(prev => ({ ...prev, [m.id]: e.target.value }))} options={studioLevelRoles.map(r => ({ label: r.name.toUpperCase(), value: r.name }))} className="h-10 text-[10px] font-bold" /></div><button onClick={() => handleAddExistingToStudio(m)} className="h-11 px-6 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all">Add</button></div></div>)))}</div>
+                    <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-50 border-2 border-slate-50 rounded-3xl custom-scrollbar">{filteredGlobalMembers.length === 0 ? (<div className="py-20 text-center text-slate-300"><Users className="mx-auto mb-4 opacity-10" size={48} /><p className="text-[11px] font-black uppercase tracking-widest">Pool exhausted</p></div>) : (filteredGlobalMembers.map(m => (<div key={m.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-6 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-4 text-start"><div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-xs font-black shadow-sm", m.avatarColor)}>{m.initials}</div><div className="min-w-0"><h4 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{m.firstName} {m.lastName}</h4><p className="text-[10px] text-slate-400 font-bold font-mono truncate tracking-tight">{m.email}</p><span className="text-[8px] font-black uppercase text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md mt-1.5 inline-block tracking-[0.1em] border border-indigo-100/50">GLOBAL: {m.role}</span></div></div><div className="flex items-center gap-3"><div className="w-40 mr-2"><Select value={selectedStudioRoles[m.id] || ''} onChange={e => setSelectedStudioRoles(prev => ({ ...prev, [m.id]: e.target.value }))} options={studioLevelRoles.map(r => ({ label: r.name.toUpperCase(), value: r.id }))} className="h-10 text-[10px] font-bold" /></div><button onClick={() => handleAddExistingToStudio(m)} className="h-11 px-6 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all">Add</button></div></div>)))}</div>
                 </div>
             ) : (
-                <div className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-6"><Input label="Full Name" placeholder="John Doe" value={inviteForm.fullName} onChange={e => setInviteForm({...inviteForm, fullName: e.target.value})} /><Input label="Email Address" placeholder="john@example.com" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})} /></div><Select label="Studio Role" value={inviteForm.role} onChange={e => setInviteForm({...inviteForm, role: e.target.value})} options={studioLevelRoles.map(r => ({ label: r.name.toUpperCase(), value: r.name }))} /><TextArea label="Personal Message (Optional)" placeholder="Welcome to the team!" value={inviteForm.message} onChange={e => setInviteForm({...inviteForm, message: e.target.value})} /><Button onClick={handleSendInvite} disabled={!inviteForm.fullName || !inviteForm.email} className="w-full bg-[#0F172A] h-14 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl">Send Studio Invitation</Button></div>
+                <div className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-6"><Input label="Full Name" placeholder="John Doe" value={inviteForm.fullName} onChange={e => setInviteForm({...inviteForm, fullName: e.target.value})} /><Input label="Email Address" placeholder="john@example.com" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})} /></div><Select label="Studio Role" value={inviteForm.role} onChange={e => setInviteForm({...inviteForm, role: e.target.value})} options={studioLevelRoles.map(r => ({ label: r.name.toUpperCase(), value: r.id }))} /><TextArea label="Personal Message (Optional)" placeholder="Welcome to the team!" value={inviteForm.message} onChange={e => setInviteForm({...inviteForm, message: e.target.value})} /><Button onClick={handleSendInvite} disabled={!inviteForm.fullName || !inviteForm.email} className="w-full bg-[#0F172A] h-14 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl">Send Studio Invitation</Button></div>
             )}
             </div>
         </div>
@@ -321,14 +374,14 @@ const TeamPage: React.FC = () => {
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={t('member_details_title')} className="max-w-2xl w-full">
          {selectedDetailMember && (
            <div className="space-y-8 py-2">
-              <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 relative min-h-[140px]"><div className={cn("w-20 h-20 rounded-3xl flex items-center justify-center text-xl font-black shadow-xl ring-8 ring-white", (selectedDetailMember as any).avatarColor || 'bg-slate-100 text-slate-500')}>{(selectedDetailMember as any).initials || (selectedDetailMember.firstName?.[0] || selectedDetailMember.email[0]).toUpperCase()}</div><div className="text-start flex-1 min-w-0 flex flex-col justify-center"><h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{selectedDetailMember.firstName ? `${selectedDetailMember.firstName} ${selectedDetailMember.lastName || ''}` : t('invitation_pending_label')}</h2>{isEditingRole ? (<div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200 w-full max-w-xs"><Select value={roleEditValue} onChange={e => setRoleEditValue(e.target.value)} options={studioLevelRoles.map(r => ({ label: r.name.toUpperCase(), value: r.name }))} className="h-10 py-0 text-[10px] font-black uppercase tracking-widest border-blue-500 focus:ring-blue-500/10 shadow-sm" /></div>) : (<p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1">{selectedDetailMember.role || 'Studio Member'}</p>)}</div></div>
+              <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 relative min-h-[140px]"><div className={cn("w-20 h-20 rounded-3xl flex items-center justify-center text-xl font-black shadow-xl ring-8 ring-white", (selectedDetailMember as any).avatarColor || 'bg-slate-100 text-slate-500')}>{(selectedDetailMember as any).initials || (selectedDetailMember.firstName?.[0] || selectedDetailMember.email[0]).toUpperCase()}</div><div className="text-start flex-1 min-w-0 flex flex-col justify-center"><h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{selectedDetailMember.firstName ? `${selectedDetailMember.firstName} ${selectedDetailMember.lastName || ''}` : t('invitation_pending_label')}</h2>{isEditingRole ? (<div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200 w-full max-w-xs"><Select value={roleEditValue} onChange={e => setRoleEditValue(e.target.value)} options={studioLevelRoles.map(r => ({ label: r.name.toUpperCase(), value: r.id }))} className="h-10 py-0 text-[10px] font-black uppercase tracking-widest border-blue-500 focus:ring-blue-500/10 shadow-sm" /></div>) : (<p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1">{selectedDetailMember.role || 'Studio Member'}</p>)}</div></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><DetailItem label={t('email_address_label')} value={selectedDetailMember.email} icon={<Mail size={14}/>} /><DetailItem label={t('joined_studio_label')} value={activeTab === 'Registered' ? ((selectedDetailMember as TeamMember).joinedDate || 'Jan 10, 2025') : ((selectedDetailMember as any).sentDate || 'Pending')} icon={<Clock size={14}/>} /></div>
               <div className="text-start space-y-4"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] ml-1">{t('linked_events_label')}</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{assignedEvents.length === 0 ? (<div className="col-span-full py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No active events assigned</p></div>) : (assignedEvents.map(ev => (<div key={ev.id} className="flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-blue-200 transition-colors cursor-pointer group"><div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 grayscale group-hover:grayscale-0 transition-all"><img src={ev.coverUrl} className="w-full h-full object-cover" alt="" /></div><span className="text-[11px] font-bold text-slate-700 truncate">{ev.title}</span></div>)))}</div></div>
               <div className="pt-8 border-t border-slate-100 flex flex-col sm:flex-row gap-4">
                   {((selectedDetailMember as any).role === 'Owner' || (selectedDetailMember as any).role === 'SuperAdmin / Owner' || roles.find(r => r.name === selectedDetailMember.role)?.isSystem) ? (
                       <div className="w-full py-4 text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{t('protected_profile_label')}</div>
                   ) : (
-                      isEditingRole ? (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(false)}>Cancel</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-blue-600 text-white" onClick={handleUpdateRole}>Save Role</Button></>) : (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(true)}>{t('edit_access_btn')}</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-red-50 text-red-600" onClick={(e) => handleDelete(selectedDetailMember, e)}>{t('remove_member_btn')}</Button></>)
+                      isEditingRole ? (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(false)} disabled={isUpdatingRole}>Cancel</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-blue-600 text-white" onClick={handleUpdateRole} isLoading={isUpdatingRole} disabled={isUpdatingRole}>Save Role</Button></>) : (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(true)}>{t('edit_access_btn')}</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-red-50 text-red-600" onClick={(e) => handleDelete(selectedDetailMember, e)}>{t('remove_member_btn')}</Button></>)
                   )}
               </div>
            </div>

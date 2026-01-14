@@ -1,118 +1,194 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { TeamMember, PendingMember, Role } from '../types';
-import { addSimulatedEmail } from '../constants';
 import { useAuth } from './AuthContext';
+import { teamApi } from '../services/teamApi';
+import { rolesApi, permissionsApi } from '../services/rolesApi';
+import { invitationsApi } from '../services/invitationsApi';
+import {
+  mapTeamMemberListToFrontend,
+  mapTeamMemberDetailToFrontend,
+  mapTeamMemberUpdateToAPI,
+  mapRoleToFrontend,
+  mapRoleCreateToAPI,
+  mapRoleUpdateToAPI,
+  mapInvitationToFrontend,
+  mapInvitationCreateToAPI,
+} from '../utils/teamMappers';
 
 interface TeamContextType {
   members: TeamMember[];
   pendingMembers: PendingMember[];
   roles: Role[];
-  setRoles: React.Dispatch<React.SetStateAction<Role[]>>;
+  isLoading: boolean;
+  error: string | null;
+  fetchMembers: () => Promise<void>;
+  fetchRoles: () => Promise<void>;
+  fetchInvitations: () => Promise<void>;
   addMember: (member: Omit<TeamMember, 'id' | 'eventsCount' | 'avatarColor' | 'initials'>) => void;
-  updateMember: (id: string, data: Partial<TeamMember>) => void;
-  deleteMember: (id: string) => void;
-  inviteMember: (data: Omit<PendingMember, 'id' | 'sentDate' | 'status'> & { org: string; accessScope: string | string[] }) => void;
+  updateMember: (id: string, data: Partial<TeamMember>) => Promise<void>;
+  deleteMember: (id: string) => Promise<void>;
+  inviteMember: (data: {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    roleId?: string;
+    accessLevel?: 'Full Access' | 'Specific Event';
+    workspaceIds?: string[];
+    message?: string;
+  }) => Promise<void>;
   updatePendingMember: (id: string, data: Partial<PendingMember>) => void;
-  deletePendingMember: (id: string) => void;
-  resendInvitation: (id: string) => void;
+  deletePendingMember: (id: string) => Promise<void>;
+  resendInvitation: (id: string) => Promise<void>;
   acceptInvitation: (email: string, details: { firstName: string; lastName: string; phone: string; password?: string; currentWorkspaceIds?: string[] }) => void;
+  createRole: (role: { name: string; level?: 'organization' | 'studio'; description?: string; permissions: string[] }) => Promise<void>;
+  updateRole: (id: string, data: Partial<Role>) => Promise<void>;
+  deleteRole: (id: string) => Promise<void>;
 }
 
 const TeamContext = createContext<TeamContextType | undefined>(undefined);
 
+// Keep localStorage keys for backward compatibility (deprecated)
 const TEAM_STORAGE_KEY = 'photmo_team_members_v1';
 const PENDING_STORAGE_KEY = 'photmo_pending_members_v1';
 const ROLES_STORAGE_KEY = 'photmo_roles_v1';
 
-const INITIAL_ROLES: Role[] = [
-  { 
-    id: 'role_owner', 
-    name: 'SuperAdmin / Owner', 
-    level: 'organization',
-    description: 'Full system control across all studios. Access Level: Platform + Studio + Adhoc (Unrestricted)',
-    permissions: [], // This will be handled in Workspaces page for display
-    memberCount: 0, 
-    isSystem: true 
-  },
-  { 
-    id: 'role_account_mgr', 
-    name: 'Account Manager', 
-    level: 'organization',
-    description: 'Manages studios, people, and operations (no ownership powers). Access Level: High-level + Studio management',
-    permissions: [], 
-    memberCount: 0 
-  },
-  { 
-    id: 'role_studio_mgr', 
-    name: 'Studio Manager', 
-    level: 'studio',
-    description: 'Runs day-to-day studio operations. Access Level: Studio-only',
-    permissions: [], 
-    memberCount: 0 
-  },
-  { 
-    id: 'role_studio_member', 
-    name: 'Studio Member', 
-    level: 'studio',
-    description: 'Executes assigned work (photographers, editors, staff). Access Level: Limited, task-based',
-    permissions: [], 
-    memberCount: 0 
-  }
-];
-
 export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   
-  const [members, setMembers] = useState<TeamMember[]>(() => {
-    const saved = localStorage.getItem(TEAM_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [pendingMembers, setPendingMembers] = useState<PendingMember[]>(() => {
-    const saved = localStorage.getItem(PENDING_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [roles, setRoles] = useState<Role[]>(() => {
-    const saved = localStorage.getItem(ROLES_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : INITIAL_ROLES;
-  });
-
-  // Ensure owner is always in the list
-  useEffect(() => {
-    if (user && !members.some(m => m.email === user.email)) {
-      const ownerMember: TeamMember = {
-        id: `owner_${user.id}`,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: 'Owner',
-        email: user.email,
-        phone: '',
-        eventsCount: 0,
-        accessLevel: 'Full Access',
-        avatarColor: 'bg-slate-900 text-white',
-        initials: (user.firstName[0] + (user.lastName[0] || '')).toUpperCase(),
-        isOwner: true,
-        joinedDate: 'Jan 1, 2025'
-      };
-      setMembers(prev => [ownerMember, ...prev]);
+  // Fetch team members from API
+  const fetchMembers = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log('[TeamContext] Fetching team members from API...');
+      const response = await teamApi.list({ page: 1, pageSize: 100 });
+      console.log('[TeamContext] Received team members:', response);
+      const mappedMembers = response.items.map(mapTeamMemberListToFrontend);
+      setMembers(mappedMembers);
+    } catch (err: any) {
+      console.error('[TeamContext] Error fetching team members:', err);
+      setError(err.message || 'Failed to fetch team members');
+      setMembers([]);
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
-  useEffect(() => {
-    localStorage.setItem(TEAM_STORAGE_KEY, JSON.stringify(members));
-  }, [members]);
+  // Fetch roles from API
+  const fetchRoles = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log('[TeamContext] Fetching roles from API...');
+      const response = await rolesApi.list({ page: 1, pageSize: 100 });
+      console.log('[TeamContext] Received roles:', response);
+      const mappedRoles = response.items.map(mapRoleToFrontend);
+      setRoles(mappedRoles);
+      
+      // If no roles returned, provide default studio roles for UI functionality
+      if (mappedRoles.length === 0) {
+        console.warn('[TeamContext] No roles from API, using default studio roles');
+        setRoles([
+          { 
+            id: 'default_studio_member', 
+            name: 'Studio Member', 
+            level: 'studio',
+            description: 'Basic studio team member',
+            permissions: [], 
+            memberCount: 0,
+            isSystem: false
+          },
+          { 
+            id: 'default_studio_manager', 
+            name: 'Studio Manager', 
+            level: 'studio',
+            description: 'Manages studio operations',
+            permissions: [], 
+            memberCount: 0,
+            isSystem: false
+          }
+        ]);
+      }
+    } catch (err: any) {
+      console.error('[TeamContext] Error fetching roles:', err);
+      setError(err.message || 'Failed to fetch roles');
+      // Provide default roles on error to keep UI functional
+      setRoles([
+        { 
+          id: 'default_studio_member', 
+          name: 'Studio Member', 
+          level: 'studio',
+          description: 'Basic studio team member',
+          permissions: [], 
+          memberCount: 0,
+          isSystem: false
+        },
+        { 
+          id: 'default_studio_manager', 
+          name: 'Studio Manager', 
+          level: 'studio',
+          description: 'Manages studio operations',
+          permissions: [], 
+          memberCount: 0,
+          isSystem: false
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
 
-  useEffect(() => {
-    localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pendingMembers));
-  }, [pendingMembers]);
+  // Fetch invitations from API
+  const fetchInvitations = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log('[TeamContext] Fetching invitations from API...');
+      // Only fetch pending invitations (exclude accepted/expired)
+      const response = await invitationsApi.list({ status: 'pending', page: 1, pageSize: 100 });
+      console.log('[TeamContext] Received invitations:', response);
+      const mappedInvitations = response.items.map(mapInvitationToFrontend);
+      setPendingMembers(mappedInvitations);
+    } catch (err: any) {
+      console.error('[TeamContext] Error fetching invitations:', err);
+      setError(err.message || 'Failed to fetch invitations');
+      setPendingMembers([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
 
+  // Initial data fetch and clear old localStorage data
   useEffect(() => {
-    localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(roles));
-  }, [roles]);
+    // Clear deprecated localStorage keys on mount
+    localStorage.removeItem(TEAM_STORAGE_KEY);
+    localStorage.removeItem(PENDING_STORAGE_KEY);
+    localStorage.removeItem(ROLES_STORAGE_KEY);
+    
+    if (user) {
+      console.log('[TeamContext] User authenticated, fetching data from API...');
+      fetchMembers();
+      fetchRoles();
+      fetchInvitations();
+    }
+  }, [user, fetchMembers, fetchRoles, fetchInvitations]);
 
+  // Add member (local only - deprecated, use inviteMember instead)
   const addMember = useCallback((data: any) => {
+    console.warn('addMember is deprecated. Team members are now managed through API invitations.');
     const colors = ['bg-blue-100 text-blue-600', 'bg-purple-100 text-purple-600', 'bg-emerald-100 text-emerald-600', 'bg-orange-100 text-orange-600'];
     const newMember: TeamMember = {
       id: `m_${Date.now()}`,
@@ -125,62 +201,91 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMembers(prev => [newMember, ...prev]);
   }, []);
 
-  const updateMember = useCallback((id: string, data: Partial<TeamMember>) => {
-    setMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+  // Update member via API
+  const updateMember = useCallback(async (id: string, data: Partial<TeamMember>) => {
+    try {
+      setError(null);
+      const apiData = mapTeamMemberUpdateToAPI(data);
+      const updatedMember = await teamApi.update(id, apiData);
+      const mappedMember = mapTeamMemberDetailToFrontend(updatedMember);
+      setMembers(prev => prev.map(m => m.id === id ? mappedMember : m));
+    } catch (err: any) {
+      console.error('Error updating member:', err);
+      setError(err.message || 'Failed to update member');
+      throw err;
+    }
   }, []);
 
-  const deleteMember = useCallback((id: string) => {
-    setMembers(prev => prev.filter(m => m.id !== id || m.isOwner));
+  // Delete member via API
+  const deleteMember = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await teamApi.delete(id);
+      setMembers(prev => prev.filter(m => m.id !== id));
+    } catch (err: any) {
+      console.error('Error deleting member:', err);
+      setError(err.message || 'Failed to delete member');
+      throw err;
+    }
   }, []);
 
-  const inviteMember = useCallback((data: any) => {
-    const newPending: PendingMember & { org?: string; accessScope?: string | string[] } = {
-      id: `p_${Date.now()}`,
-      sentDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      status: 'Awaiting Response',
-      ...data
-    };
-    setPendingMembers(prev => [newPending, ...prev]);
-
-    addSimulatedEmail({
-      to: data.email,
-      subject: `You have been invited to ${data.org} Workspace`,
-      body: JSON.stringify({
-        type: 'INVITATION',
-        recipient: data.email,
-        accessLevel: data.accessScope || data.accessLevel,
-        role: data.role,
-        org: data.org || 'Photmo Inc.'
-      })
-    });
+  // Invite member via API
+  const inviteMember = useCallback(async (data: {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    roleId?: string;
+    accessLevel?: 'Full Access' | 'Specific Event';
+    workspaceIds?: string[];
+    message?: string;
+  }) => {
+    try {
+      setError(null);
+      const apiData = mapInvitationCreateToAPI(data);
+      const invitation = await invitationsApi.create(apiData);
+      const mappedInvitation = mapInvitationToFrontend(invitation);
+      setPendingMembers(prev => [mappedInvitation, ...prev]);
+    } catch (err: any) {
+      console.error('Error inviting member:', err);
+      setError(err.message || 'Failed to invite member');
+      throw err;
+    }
   }, []);
 
+  // Update pending member (local only - deprecated)
   const updatePendingMember = useCallback((id: string, data: Partial<PendingMember>) => {
+    console.warn('updatePendingMember is deprecated. Use resendInvitation or cancel via API.');
     setPendingMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
   }, []);
 
-  const deletePendingMember = useCallback((id: string) => {
-    setPendingMembers(prev => prev.filter(m => m.id !== id));
+  // Delete pending member (cancel invitation) via API
+  const deletePendingMember = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await invitationsApi.cancel(id);
+      setPendingMembers(prev => prev.filter(m => m.id !== id));
+    } catch (err: any) {
+      console.error('Error canceling invitation:', err);
+      setError(err.message || 'Failed to cancel invitation');
+      throw err;
+    }
   }, []);
 
-  const resendInvitation = useCallback((id: string) => {
-    const member = pendingMembers.find(m => m.id === id) as any;
-    if (member) {
-      addSimulatedEmail({
-        to: member.email,
-        subject: `Invitation Resent: ${member.org || 'Photmo'} Workspace`,
-        body: JSON.stringify({
-          type: 'INVITATION',
-          recipient: member.email,
-          accessLevel: member.accessScope || member.accessLevel,
-          role: member.role,
-          org: member.org || 'Photmo Inc.'
-        })
-      });
+  // Resend invitation via API
+  const resendInvitation = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await invitationsApi.resend(id);
+    } catch (err: any) {
+      console.error('Error resending invitation:', err);
+      setError(err.message || 'Failed to resend invitation');
+      throw err;
     }
-  }, [pendingMembers]);
+  }, []);
 
+  // Accept invitation (local only - actual acceptance happens via signup flow)
   const acceptInvitation = useCallback((email: string, details: any) => {
+    console.warn('acceptInvitation is for local simulation only. Actual acceptance via /api/v1/invitations/accept.');
     const pendingIdx = pendingMembers.findIndex(p => p.email.toLowerCase() === email.toLowerCase());
     if (pendingIdx !== -1) {
       const invite = pendingMembers[pendingIdx] as any;
@@ -189,7 +294,6 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const firstName = details.firstName || invite.firstName || email.split('@')[0];
       const lastName = details.lastName || invite.lastName || '';
       
-      // If invited with Full Access, use the passed currentWorkspaceIds to snapshot current studios
       const finalWorkspaceIds = invite.accessLevel === 'Full Access' && details.currentWorkspaceIds
         ? details.currentWorkspaceIds
         : (invite.allowedWorkspaceIds || []);
@@ -212,22 +316,67 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setMembers(prev => [...prev, newMember]);
       setPendingMembers(prev => prev.filter(p => p.email.toLowerCase() !== email.toLowerCase()));
-
-      // Dispatch Welcome Email
-      addSimulatedEmail({
-        to: email,
-        subject: `Welcome to ${invite.org || 'Photmo'}!`,
-        body: `Hello ${firstName},\n\nWelcome to the team! You have successfully joined the ${invite.org || 'Photmo'} workspace.\n\nYou can now log in to your account at any time to manage events and collaborate with your colleagues.\n\nWorkspace: ${invite.org || 'Photmo'}\nAccess Level: ${invite.accessLevel}\n\nBest regards,\nThe ${invite.org || 'Photmo'} Team`
-      });
     }
   }, [pendingMembers]);
+
+  // Create role via API
+  const createRole = useCallback(async (role: {
+    name: string;
+    level?: 'organization' | 'studio';
+    description?: string;
+    permissions: string[];
+  }) => {
+    try {
+      setError(null);
+      const apiData = mapRoleCreateToAPI(role);
+      const newRole = await rolesApi.create(apiData);
+      const mappedRole = mapRoleToFrontend(newRole);
+      setRoles(prev => [...prev, mappedRole]);
+    } catch (err: any) {
+      console.error('Error creating role:', err);
+      setError(err.message || 'Failed to create role');
+      throw err;
+    }
+  }, []);
+
+  // Update role via API
+  const updateRole = useCallback(async (id: string, data: Partial<Role>) => {
+    try {
+      setError(null);
+      const apiData = mapRoleUpdateToAPI(data);
+      const updatedRole = await rolesApi.update(id, apiData);
+      const mappedRole = mapRoleToFrontend(updatedRole);
+      setRoles(prev => prev.map(r => r.id === id ? mappedRole : r));
+    } catch (err: any) {
+      console.error('Error updating role:', err);
+      setError(err.message || 'Failed to update role');
+      throw err;
+    }
+  }, []);
+
+  // Delete role via API
+  const deleteRole = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await rolesApi.delete(id);
+      setRoles(prev => prev.filter(r => r.id !== id));
+    } catch (err: any) {
+      console.error('Error deleting role:', err);
+      setError(err.message || 'Failed to delete role');
+      throw err;
+    }
+  }, []);
 
   return (
     <TeamContext.Provider value={{
       members,
       pendingMembers,
       roles,
-      setRoles,
+      isLoading,
+      error,
+      fetchMembers,
+      fetchRoles,
+      fetchInvitations,
       addMember,
       updateMember,
       deleteMember,
@@ -235,7 +384,10 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatePendingMember,
       deletePendingMember,
       resendInvitation,
-      acceptInvitation
+      acceptInvitation,
+      createRole,
+      updateRole,
+      deleteRole,
     }}>
       {children}
     </TeamContext.Provider>
