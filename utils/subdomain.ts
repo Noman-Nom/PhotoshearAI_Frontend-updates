@@ -78,5 +78,5 @@ export function isOnMainDomain(): boolean {
 export function getApiBaseUrl(): string {
   // Always use the same backend API regardless of subdomain
   // The backend will determine org context from JWT token
-  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  return import.meta.env.VITE_API_BASE_URL || 'https://api.fotoshareai.com';
 }
