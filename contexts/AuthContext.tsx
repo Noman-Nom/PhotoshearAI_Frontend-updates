@@ -305,6 +305,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setResetStepState('EMAIL');
     setNeedsProfileCompletion(false);
     setStatus(AuthStatus.IDLE);
+    
+    // Trigger logout across all tabs and subdomains
+    // This event will be caught by the storage listener below
+    localStorage.setItem('auth_logout_signal', JSON.stringify({ timestamp: Date.now() }));
   }, []);
 
   useEffect(() => {
@@ -328,6 +332,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setNeedsProfileCompletion(false);
         setStatus(AuthStatus.ERROR);
       });
+  }, []);
+
+  // Listen for logout signals from other tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      // Check if logout signal was triggered
+      if (e.key === 'auth_logout_signal' && e.newValue) {
+        // Clear all auth data from all subdomains
+        setUser(null);
+        setAuthToken(null);
+        localStorage.removeItem(CURRENT_USER_KEY);
+        localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
+        localStorage.removeItem(PENDING_RESET_KEY);
+        localStorage.removeItem(RESET_STEP_KEY);
+        localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
+        setPendingUserEmail(null);
+        setResetEmail(null);
+        setResetStepState('EMAIL');
+        setNeedsProfileCompletion(false);
+        setStatus(AuthStatus.IDLE);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   return (
