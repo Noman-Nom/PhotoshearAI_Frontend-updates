@@ -61,7 +61,9 @@ const TeamPage: React.FC = () => {
     inviteMember, 
     updatePendingMember, 
     deletePendingMember, 
-    resendInvitation 
+    resendInvitation,
+    fetchMembers,
+    fetchInvitations
   } = useTeam();
 
   const { activeWorkspace, workspaces } = useWorkspace();
@@ -132,6 +134,8 @@ const TeamPage: React.FC = () => {
         allowedWorkspaceIds: Array.from(new Set([...(member.allowedWorkspaceIds || []), activeWorkspace.id])) 
       });
       showToast({ message: `${member.firstName} ${member.lastName} added to workspace!`, type: 'success' });
+      // Refetch to update UI immediately
+      await fetchMembers();
       setIsAddModalOpen(false);
     } catch (error) {
       console.error('Error adding member to workspace:', error);
@@ -155,6 +159,8 @@ const TeamPage: React.FC = () => {
         message: inviteForm.message 
       });
       showToast({ message: 'Invitation sent successfully!', type: 'success' });
+      // Refetch to update UI immediately
+      await fetchInvitations();
       setIsAddModalOpen(false);
       setActiveTab('Pending');
     } catch (error) {
@@ -180,13 +186,15 @@ const TeamPage: React.FC = () => {
         // Send role_id to API
         await updateMember(selectedDetailMember.id, { roleId: roleEditValue });
         showToast({ message: 'Role updated successfully!', type: 'success' });
+        // Refetch to update UI immediately
+        await fetchMembers();
       } else {
         updatePendingMember(selectedDetailMember.id, { role: roleEditValue });
         showToast({ message: 'Pending member role updated!', type: 'success' });
+        await fetchInvitations();
       }
-      // Update local state with new role info
-      const updatedRole = roles.find(r => r.id === roleEditValue);
-      setSelectedDetailMember({ ...selectedDetailMember, role: updatedRole?.name || roleEditValue });
+      // Close modal after successful update
+      setIsDetailModalOpen(false);
       setIsEditingRole(false);
     } catch (error: any) {
       console.error('Error updating role:', error);
@@ -230,33 +238,37 @@ const TeamPage: React.FC = () => {
         try {
           if (isPending) {
               updatePendingMember(m.id, { allowedWorkspaceIds: currentWS, allowedEventIds: nextEvents });
+              await fetchInvitations();
           } else {
               await updateMember(m.id, { allowedWorkspaceIds: currentWS, allowedEventIds: nextEvents });
+              await fetchMembers();
           }
+          showToast({ message: `${itemToDelete.name} removed from studio successfully!`, type: 'success' });
         } catch (error) {
           console.error('Error updating member access:', error);
+          showToast({ message: 'Failed to remove member. Please try again.', type: 'error' });
           throw error;
         }
     };
 
-    if (itemToDelete.type === 'Registered') { 
-        const m = members.find(m => m.id === itemToDelete.id); 
-        if (m) {
-          handleRemoval(m, false).catch(err => {
-            alert('Failed to remove member. Please try again.');
-          });
-        }
-    } else { 
-        const p = pendingMembers.find(p => p.id === itemToDelete.id); 
-        if (p) {
-          handleRemoval(p, true).catch(err => {
-            alert('Failed to cancel invitation. Please try again.');
-          });
-        }
+    try {
+      if (itemToDelete.type === 'Registered') { 
+          const m = members.find(m => m.id === itemToDelete.id); 
+          if (m) {
+            await handleRemoval(m, false);
+          }
+      } else { 
+          const p = pendingMembers.find(p => p.id === itemToDelete.id); 
+          if (p) {
+            await handleRemoval(p, true);
+          }
+      }
+    } catch (err) {
+      // Error already handled in handleRemoval
+    } finally {
+      setIsDeleteModalOpen(false);
+      setItemToDelete(null);
     }
-    
-    setIsDeleteModalOpen(false);
-    setItemToDelete(null);
   };
 
   const assignedEvents = selectedDetailMember ? (selectedDetailMember.accessLevel === 'Full Access' ? SHARED_EVENTS.filter(e => e.workspaceId === activeWorkspace?.id) : SHARED_EVENTS.filter(e => selectedDetailMember.allowedEventIds?.includes(e.id))) : [];
@@ -337,7 +349,7 @@ const TeamPage: React.FC = () => {
                               </div>
                             ) : (
                               <div className={cn("flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 transition-all", isRTL ? "justify-start" : "justify-end")}>
-                                {!isRegistered && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); alert('Invitation resent successfully!'); } catch (err) { alert('Failed to resend invitation. Please try again.'); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16}/></button>)}
+                                {!isRegistered && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); showToast({ message: 'Invitation resent successfully!', type: 'success' }); await fetchInvitations(); } catch (err) { showToast({ message: 'Failed to resend invitation. Please try again.', type: 'error' }); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16}/></button>)}
                                 <button onClick={(e) => handleDelete(member, e)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Remove from Studio"><Trash2 size={16}/></button>
                               </div>
                             )}
