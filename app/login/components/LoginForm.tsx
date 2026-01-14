@@ -10,6 +10,7 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { cn } from '../../../utils/cn';
 import { GOOGLE_CLIENT_ID } from '../../../utils/api';
+import { isOnMainDomain } from '../../../utils/subdomain';
 
 declare global {
   interface Window {
@@ -46,7 +47,12 @@ export const LoginForm: React.FC = () => {
     setFormError(null);
     try {
       await login(data);
-      navigate('/workspaces');
+      // Only navigate if not on main domain (subdomain login stays on same subdomain)
+      // Main domain login will redirect to subdomain in AuthContext
+      if (!isOnMainDomain()) {
+        navigate('/workspaces');
+      }
+      // If on main domain, the redirect to subdomain happens in AuthContext
     } catch (error: any) {
       if (error.message === 'VERIFICATION_REQUIRED') {
         navigate('/verify-otp');

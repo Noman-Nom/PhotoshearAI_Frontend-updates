@@ -104,9 +104,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Handle redirect after login
       if (resp?.subdomain) {
-        // If logged in from app.fotoshareai.com, redirect to user's org subdomain
+        // If logged in from app.fotoshareai.com, redirect to user's org subdomain with workspaces route
         if (isOnMainDomain()) {
-          redirectToSubdomain(resp.subdomain);
+          setStatus(AuthStatus.SUCCESS);
+          // Redirect to subdomain with workspaces route
+          const protocol = window.location.protocol;
+          window.location.href = `${protocol}//${resp.subdomain}.fotoshareai.com/#/workspaces`;
+          return; // Stop execution, redirect will happen
         }
         // If on specific subdomain, stay there (no redirect needed)
       }
