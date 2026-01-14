@@ -20,6 +20,7 @@ export interface TeamMemberListResponseAPI {
   joined_at: string;
   initials: string;
   avatar_color: string;
+  workspace_ids: string[];
 }
 
 export interface TeamMemberResponseAPI {
@@ -38,6 +39,7 @@ export interface TeamMemberResponseAPI {
   initials: string;
   avatar_color: string;
   events_count: number;
+  workspace_ids: string[];
 }
 
 export interface TeamMemberUpdateAPI {
@@ -46,6 +48,7 @@ export interface TeamMemberUpdateAPI {
   phone?: string | null;
   role_id?: string | null;
   access_level?: 'Full Access' | 'Specific Event' | null;
+  workspace_ids?: string[] | null;
 }
 
 export interface PaginatedTeamMembersResponseAPI {
