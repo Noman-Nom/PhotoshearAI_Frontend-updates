@@ -91,8 +91,11 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   price: string;
-  interval: 'monthly' | 'yearly';
+  interval: string;
   features: string[];
+  storageLimit?: number;
+  maxEvents?: number | null;
+  maxTeamMembers?: number | null;
   isCurrent?: boolean;
   isPopular?: boolean;
 }

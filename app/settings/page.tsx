@@ -34,6 +34,7 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTeam } from '../../contexts/TeamContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { useBilling } from '../../contexts/BillingContext';
 import { LanguageSwitcher } from '../../components/shared/LanguageSwitcher';
 import { cn } from '../../utils/cn';
 import { Button } from '../../components/ui/Button';
@@ -47,6 +48,7 @@ import { SHARED_EVENTS, COUNTRIES } from '../../constants';
 import { formatBytes } from '../../utils/formatters';
 import { api } from '../../utils/api';
 import { mapUserFromApi } from '../../utils/mappers';
+import { showToast } from '../../utils/toast';
 
 type SettingsTab = 'profile' | 'security' | 'payment' | 'plans' | 'billing';
 type PasswordStep = 'UPDATE_FORM' | 'FORGOT_OTP' | 'FORGOT_RESET' | 'SUCCESS';
@@ -94,34 +96,28 @@ const SettingsPage: React.FC = () => {
   const { user, updateUserProfile, logout } = useAuth();
   const { members } = useTeam();
   const { activeWorkspace } = useWorkspace();
+  const { 
+    paymentMethods, 
+    plans, 
+    subscription, 
+    billingHistory, 
+    billingHistoryTotal,
+    billingHistoryPage,
+    billingHistoryPageSize,
+    fetchPaymentMethods,
+    fetchPlans,
+    fetchSubscription,
+    fetchBillingHistory,
+    addPaymentMethod,
+    deletePaymentMethod: deletePaymentMethodApi,
+    updateSubscription,
+    isLoading: isBillingLoading,
+    error: billingError,
+  } = useBilling();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [isSuccessToast, setIsSuccessToast] = useState(false);
   const [successMsg, setSuccessMsg] = useState('Settings updated successfully.');
-
-  // Payment State
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(() => {
-    try {
-      const saved = localStorage.getItem(PAYMENT_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [
-          {
-              id: 'pm_1',
-              brand: 'Visa',
-              last4: '4242',
-              expiryDate: '12/26',
-              cardholderName: (user?.firstName + ' ' + (user?.lastName || '')).trim().toUpperCase() || 'DEMO USER',
-              isDefault: true,
-              billingAddress: { street: '123 Studio Way', city: 'San Francisco', zip: '94103', country: 'US' }
-          }
-      ];
-    } catch (e) {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem(PAYMENT_STORAGE_KEY, JSON.stringify(paymentMethods));
-  }, [paymentMethods]);
 
   // Add Card Modal State
   const [isAddCardModalOpen, setIsAddCardModalOpen] = useState(false);
@@ -137,6 +133,20 @@ const SettingsPage: React.FC = () => {
   });
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [isSavingCard, setIsSavingCard] = useState(false);
+
+  // Fetch billing data on mount and when activeTab changes to payment/plans/billing
+  useEffect(() => {
+    if (!isOwner) return;
+    
+    if (activeTab === 'payment') {
+      fetchPaymentMethods();
+    } else if (activeTab === 'plans') {
+      fetchPlans();
+      fetchSubscription();
+    } else if (activeTab === 'billing') {
+      fetchBillingHistory();
+    }
+  }, [activeTab, isOwner, fetchPaymentMethods, fetchPlans, fetchSubscription, fetchBillingHistory]);
 
   // User menu state for platform header
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -406,7 +416,7 @@ const SettingsPage: React.FC = () => {
       return 'Generic';
   };
 
-  const handleAddCard = () => {
+  const handleAddCard = async () => {
       const errs: Record<string, string> = {};
       if (!cardForm.name.trim()) errs.name = "Required";
       if (cardForm.number.replace(/\s/g, '').length < 13) errs.number = "Invalid card number";
@@ -421,35 +431,52 @@ const SettingsPage: React.FC = () => {
       }
 
       setIsSavingCard(true);
-      setTimeout(() => {
-          const newMethod: PaymentMethod = {
-              id: `pm_${Date.now()}`,
-              brand: detectCardBrand(cardForm.number),
-              last4: cardForm.number.slice(-4),
-              expiryDate: cardForm.expiry,
-              cardholderName: cardForm.name.trim().toUpperCase(),
-              billingAddress: {
+      try {
+          const [month, year] = cardForm.expiry.split('/');
+          await addPaymentMethod({
+              card_number: cardForm.number.replace(/\s/g, ''),
+              exp_month: parseInt(month),
+              exp_year: 2000 + parseInt(year),
+              cvv: cardForm.cvv,
+              cardholder_name: cardForm.name.trim(),
+              billing_address: {
                   street: cardForm.street,
                   city: cardForm.city,
                   zip: cardForm.zip,
                   country: cardForm.country
-              }
-          };
-          setPaymentMethods(prev => [...prev, newMethod]);
-          setIsSavingCard(false);
+              },
+              is_default: paymentMethods.length === 0
+          });
           setIsAddCardModalOpen(false);
           setCardForm({ name: '', number: '', expiry: '', cvv: '', street: '', city: '', zip: '', country: 'US' });
-          setSuccessMsg('Payment method authorized.');
-          setIsSuccessToast(true);
-          setTimeout(() => setIsSuccessToast(false), 3000);
-      }, 1500);
+          setCardErrors({});
+          showToast('success', 'Payment method added successfully');
+          await fetchPaymentMethods();
+      } catch (err: any) {
+          showToast('error', err.message || 'Failed to add payment method');
+      } finally {
+          setIsSavingCard(false);
+      }
   };
 
-  const deletePaymentMethod = (id: string) => {
-      setPaymentMethods(prev => prev.filter(p => p.id !== id));
-      setSuccessMsg('Payment method removed.');
-      setIsSuccessToast(true);
-      setTimeout(() => setIsSuccessToast(false), 3000);
+  const handleDeletePaymentMethod = async (id: string) => {
+      try {
+          await deletePaymentMethodApi(id);
+          showToast('success', 'Payment method removed');
+          await fetchPaymentMethods();
+      } catch (err: any) {
+          showToast('error', err.message || 'Failed to delete payment method');
+      }
+  };
+
+  const handleUpgradeSubscription = async (planId: string) => {
+      try {
+          await updateSubscription(planId);
+          showToast('success', 'Subscription updated successfully');
+          await fetchSubscription();
+      } catch (err: any) {
+          showToast('error', err.message || 'Failed to update subscription');
+      }
   };
 
   const menuItems = [
@@ -778,8 +805,9 @@ const SettingsPage: React.FC = () => {
                                                 <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[8px] font-black uppercase rounded-lg border border-blue-100 tracking-widest">Default</span>
                                             )}
                                             <button 
-                                                onClick={() => deletePaymentMethod(pm.id)}
-                                                className="p-2 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                onClick={() => handleDeletePaymentMethod(pm.id)}
+                                                disabled={isBillingLoading}
+                                                className="p-2 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
                                             >
                                                 <Trash2 size={16} />
                                             </button>
@@ -822,36 +850,52 @@ const SettingsPage: React.FC = () => {
                   <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500 text-start">
                     <div className="border-b border-slate-200 pb-6 mb-10">
                       <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Enterprise Infrastructure</h2>
-                      <p className="text-xs text-slate-400 font-bold uppercase mt-1">Current Tier: <strong>{PLANS.find(p => p.isCurrent)?.name}</strong></p>
+                      <p className="text-xs text-slate-400 font-bold uppercase mt-1">Current Tier: <strong>{subscription?.planName || plans.find(p => p.isCurrent)?.name || 'N/A'}</strong></p>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      {PLANS.map((plan) => (
-                        <Card key={plan.id} className={cn(
-                          "p-10 bg-white border-2 transition-all relative flex flex-col rounded-[2.5rem]",
-                          plan.isCurrent ? "border-slate-900 ring-8 ring-slate-900/5 shadow-2xl" : "border-slate-100 hover:border-slate-200 shadow-sm hover:shadow-xl",
-                          plan.isPopular && !plan.isCurrent && "border-blue-500"
-                        )}>
-                          {plan.isPopular && (
-                            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">POPULAR</div>
-                          )}
-                          <div className="mb-8">
-                            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{plan.name}</h3>
-                            <div className="flex items-baseline gap-1">
-                              <span className="text-5xl font-black text-slate-900 tracking-tighter">{plan.price}</span>
-                              <span className="text-xs font-bold text-slate-400 uppercase">/{plan.interval === 'monthly' ? 'mo' : 'yr'}</span>
-                            </div>
-                          </div>
-                          <div className="flex-1 space-y-5 mb-10">
-                            {plan.features.map((feature, idx) => (
-                              <div key={idx} className="flex items-start gap-4">
-                                <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 border border-emerald-100 shadow-sm"><Check size={14} strokeWidth={4} /></div>
-                                <span className="text-[13px] font-bold text-slate-600 leading-tight">{feature}</span>
+                      {isBillingLoading && !plans.length ? (
+                        <div className="col-span-full text-center py-12">
+                          <p className="text-slate-400 font-bold">Loading plans...</p>
+                        </div>
+                      ) : plans.length === 0 ? (
+                        <div className="col-span-full text-center py-12">
+                          <p className="text-slate-400 font-bold">No plans available</p>
+                        </div>
+                      ) : (
+                        plans.map((plan) => (
+                          <Card key={plan.id} className={cn(
+                            "p-10 bg-white border-2 transition-all relative flex flex-col rounded-[2.5rem]",
+                            plan.isCurrent ? "border-slate-900 ring-8 ring-slate-900/5 shadow-2xl" : "border-slate-100 hover:border-slate-200 shadow-sm hover:shadow-xl",
+                            plan.isPopular && !plan.isCurrent && "border-blue-500"
+                          )}>
+                            {plan.isPopular && (
+                              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">POPULAR</div>
+                            )}
+                            <div className="mb-8">
+                              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{plan.name}</h3>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-5xl font-black text-slate-900 tracking-tighter">{plan.price}</span>
+                                <span className="text-xs font-bold text-slate-400 uppercase">/{plan.interval === 'monthly' ? 'mo' : 'yr'}</span>
                               </div>
-                            ))}
-                          </div>
-                          <button disabled={plan.isCurrent} className={cn("w-full h-14 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all", plan.isCurrent ? "bg-slate-100 text-slate-400 cursor-default shadow-inner" : "bg-[#0F172A] text-white hover:bg-slate-800 shadow-xl active:scale-95")}>{plan.isCurrent ? 'Active Hub' : 'Upgrade'}</button>
-                        </Card>
-                      ))}
+                            </div>
+                            <div className="flex-1 space-y-5 mb-10">
+                              {plan.features.map((feature, idx) => (
+                                <div key={idx} className="flex items-start gap-4">
+                                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 border border-emerald-100 shadow-sm"><Check size={14} strokeWidth={4} /></div>
+                                  <span className="text-[13px] font-bold text-slate-600 leading-tight">{feature}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <button 
+                              disabled={plan.isCurrent || isBillingLoading} 
+                              onClick={() => !plan.isCurrent && handleUpgradeSubscription(plan.id)}
+                              className={cn("w-full h-14 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all", plan.isCurrent ? "bg-slate-100 text-slate-400 cursor-default shadow-inner" : "bg-[#0F172A] text-white hover:bg-slate-800 shadow-xl active:scale-95 disabled:opacity-50")}
+                            >
+                              {plan.isCurrent ? 'Active Hub' : 'Upgrade'}
+                            </button>
+                          </Card>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
@@ -875,15 +919,25 @@ const SettingsPage: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50 font-mono">
-                            {BILLING_HISTORY.map((item) => (
-                              <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="px-10 py-6"><div className="text-[12px] font-black text-slate-900 uppercase tracking-tight">{item.date}</div><div className="text-[10px] text-slate-400 mt-1 uppercase opacity-60">{item.id}</div></td>
-                                <td className="px-10 py-6"><div className="text-[12px] font-black text-slate-900 uppercase">${item.amount} {item.currency}</div></td>
-                                <td className="px-10 py-6"><div className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">{item.method}</div></td>
-                                <td className="px-10 py-6"><span className={cn("px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-[0.1em] border shadow-sm", item.status === 'Paid' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-red-50 text-red-600 border-red-100")}>{item.status}</span></td>
-                                <td className="px-10 py-6 text-right"><button className="p-3 text-slate-300 hover:text-slate-900 hover:bg-white rounded-xl transition-all opacity-0 group-hover:opacity-100 shadow-sm border border-transparent hover:border-slate-100"><Download size={20} /></button></td>
+                            {isBillingLoading && !billingHistory.length ? (
+                              <tr>
+                                <td colSpan={5} className="px-10 py-12 text-center text-slate-400">Loading billing history...</td>
                               </tr>
-                            ))}
+                            ) : billingHistory.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="px-10 py-12 text-center text-slate-400">No billing history yet</td>
+                              </tr>
+                            ) : (
+                              billingHistory.map((item) => (
+                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                                  <td className="px-10 py-6"><div className="text-[12px] font-black text-slate-900 uppercase tracking-tight">{new Date(item.date).toLocaleDateString()}</div><div className="text-[10px] text-slate-400 mt-1 uppercase opacity-60">{item.id}</div></td>
+                                  <td className="px-10 py-6"><div className="text-[12px] font-black text-slate-900 uppercase">{item.amount} {item.currency}</div></td>
+                                  <td className="px-10 py-6"><div className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">{item.method}</div></td>
+                                  <td className="px-10 py-6"><span className={cn("px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-[0.1em] border shadow-sm", item.status === 'Paid' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : item.status === 'Failed' ? "bg-red-50 text-red-600 border-red-100" : "bg-amber-50 text-amber-600 border-amber-100")}>{item.status}</span></td>
+                                  <td className="px-10 py-6 text-right"><button className="p-3 text-slate-300 hover:text-slate-900 hover:bg-white rounded-xl transition-all opacity-0 group-hover:opacity-100 shadow-sm border border-transparent hover:border-slate-100"><Download size={20} /></button></td>
+                                </tr>
+                              ))
+                            )}
                           </tbody>
                         </table>
                       </div>

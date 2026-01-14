@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { TeamProvider } from './contexts/TeamContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { BillingProvider } from './contexts/BillingContext';
 
 // Pages
 import LoginPage from './app/login/page';
@@ -118,9 +119,11 @@ const App: React.FC = () => {
       <LanguageProvider>
         <TeamProvider>
           <WorkspaceProvider>
-            <Router>
-              <AppRoutes />
-            </Router>
+            <BillingProvider>
+              <Router>
+                <AppRoutes />
+              </Router>
+            </BillingProvider>
           </WorkspaceProvider>
         </TeamProvider>
       </LanguageProvider>
