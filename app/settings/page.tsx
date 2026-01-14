@@ -134,20 +134,6 @@ const SettingsPage: React.FC = () => {
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [isSavingCard, setIsSavingCard] = useState(false);
 
-  // Fetch billing data on mount and when activeTab changes to payment/plans/billing
-  useEffect(() => {
-    if (!isOwner) return;
-    
-    if (activeTab === 'payment') {
-      fetchPaymentMethods();
-    } else if (activeTab === 'plans') {
-      fetchPlans();
-      fetchSubscription();
-    } else if (activeTab === 'billing') {
-      fetchBillingHistory();
-    }
-  }, [activeTab, isOwner, fetchPaymentMethods, fetchPlans, fetchSubscription, fetchBillingHistory]);
-
   // User menu state for platform header
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -206,6 +192,20 @@ const SettingsPage: React.FC = () => {
     const profile = members.find(m => m.email === user?.email);
     return profile?.isOwner || ['Owner', 'SuperAdmin / Owner'].includes(profile?.role || '');
   }, [members, user]);
+
+  // Fetch billing data on mount and when activeTab changes to payment/plans/billing
+  useEffect(() => {
+    if (!isOwner) return;
+    
+    if (activeTab === 'payment') {
+      fetchPaymentMethods();
+    } else if (activeTab === 'plans') {
+      fetchPlans();
+      fetchSubscription();
+    } else if (activeTab === 'billing') {
+      fetchBillingHistory();
+    }
+  }, [activeTab, isOwner, fetchPaymentMethods, fetchPlans, fetchSubscription, fetchBillingHistory]);
 
   const globalStorageStats = useMemo(() => {
     const totalSizeBytes = SHARED_EVENTS.reduce((acc, event) => acc + (event.totalSizeBytes || 0), 0);
@@ -450,10 +450,10 @@ const SettingsPage: React.FC = () => {
           setIsAddCardModalOpen(false);
           setCardForm({ name: '', number: '', expiry: '', cvv: '', street: '', city: '', zip: '', country: 'US' });
           setCardErrors({});
-          showToast('success', 'Payment method added successfully');
+          showToast({ type: 'success', message: 'Payment method added successfully' });
           await fetchPaymentMethods();
       } catch (err: any) {
-          showToast('error', err.message || 'Failed to add payment method');
+          showToast({ type: 'error', message: err.message || 'Failed to add payment method' });
       } finally {
           setIsSavingCard(false);
       }
@@ -462,20 +462,20 @@ const SettingsPage: React.FC = () => {
   const handleDeletePaymentMethod = async (id: string) => {
       try {
           await deletePaymentMethodApi(id);
-          showToast('success', 'Payment method removed');
+          showToast({ type: 'success', message: 'Payment method removed' });
           await fetchPaymentMethods();
       } catch (err: any) {
-          showToast('error', err.message || 'Failed to delete payment method');
+          showToast({ type: 'error', message: err.message || 'Failed to delete payment method' });
       }
   };
 
   const handleUpgradeSubscription = async (planId: string) => {
       try {
           await updateSubscription(planId);
-          showToast('success', 'Subscription updated successfully');
+          showToast({ type: 'success', message: 'Subscription updated successfully' });
           await fetchSubscription();
       } catch (err: any) {
-          showToast('error', err.message || 'Failed to update subscription');
+          showToast({ type: 'error', message: err.message || 'Failed to update subscription' });
       }
   };
 
