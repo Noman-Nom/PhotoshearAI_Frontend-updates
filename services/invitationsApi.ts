@@ -58,6 +58,8 @@ export interface InvitationAcceptResponseAPI {
   user_id: string;
   email: string;
   token: string;
+  subdomain: string;
+  is_owner: boolean;
 }
 
 // ============================================================================

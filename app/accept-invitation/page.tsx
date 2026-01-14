@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/Input';
 import { invitationsApi } from '../../services/invitationsApi';
 import { setAuthToken } from '../../utils/api';
 import { cn } from '../../utils/cn';
+import { redirectToSubdomain } from '../../utils/subdomain';
 
 type Step = 'LOADING' | 'INVITE' | 'REGISTER' | 'SUCCESS' | 'ERROR';
 
@@ -97,11 +98,14 @@ const AcceptInvitationPage: React.FC = () => {
       setIsSubmitting(false);
       setStep('SUCCESS');
       
-      // Auto redirect to dashboard after success
+      // Redirect to the organization's subdomain after success
       setTimeout(() => {
-        navigate('/dashboard');
-        // Reload to update auth state
-        window.location.reload();
+        if (response.subdomain) {
+          redirectToSubdomain(response.subdomain);
+        } else {
+          navigate('/dashboard');
+          window.location.reload();
+        }
       }, 2500);
 
     } catch (err: any) {
