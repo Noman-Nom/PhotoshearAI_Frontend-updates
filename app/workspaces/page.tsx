@@ -164,7 +164,7 @@ const WorkspacesPage: React.FC = () => {
   const { user, logout } = useAuth();
   const { t, isRTL } = useTranslation();
   const { workspaces, setActiveWorkspaceById, deleteWorkspace } = useWorkspace();
-  const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember, createRole, updateRole, deleteRole, fetchRoles, fetchMembers } = useTeam();
+  const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember, createRole, updateRole, deleteRole, fetchRoles, fetchMembers, fetchInvitations } = useTeam();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Tab State
@@ -443,9 +443,9 @@ const WorkspacesPage: React.FC = () => {
     setIsAddMemberModalOpen(true);
   };
 
-  const handleSendInvite = () => {
+  const handleSendInvite = async () => {
     if (!inviteForm.fullName.trim() || !inviteForm.email.trim() || !EMAIL_REGEX.test(inviteForm.email.trim())) {
-        alert("Please enter a valid email address.");
+        showToast({ message: 'Please enter a valid email address.', type: 'error' });
         return;
     }
     
@@ -466,38 +466,47 @@ const WorkspacesPage: React.FC = () => {
         }
     }
 
-    if (editingMemberId) {
-      // Find role ID from role name
-      const selectedRole = roles.find(r => r.name === inviteForm.role);
-      updateMember(editingMemberId, {
-        firstName,
-        lastName,
-        roleId: selectedRole?.id,
-        accessLevel: isAllStudios ? 'Full Access' : 'Specific Event',
-      });
-      // Note: allowedWorkspaceIds should be managed separately via workspace member API
-    } else {
-      inviteMember({
-        email: inviteForm.email,
-        firstName,
-        lastName,
-        accessLevel: isAllStudios ? 'Full Access' : 'Specific Event',
-        role: inviteForm.role,
-        allowedEventIds: [],
-        allowedWorkspaceIds: isAllStudios ? workspaces.map(w => w.id) : inviteForm.selectedStudioIds,
-        location: inviteForm.location,
-        org: user?.companyName || 'Photmo Inc.',
-        accessScope 
-      } as any);
-      setMemberStatusFilter('Pending');
-    }
+    try {
+      if (editingMemberId) {
+        // Find role ID from role name
+        const selectedRole = roles.find(r => r.name === inviteForm.role);
+        await updateMember(editingMemberId, {
+          firstName,
+          lastName,
+          roleId: selectedRole?.id,
+          accessLevel: isAllStudios ? 'Full Access' : 'Specific Event',
+          workspaceIds: isAllStudios ? workspaces.map(w => w.id) : inviteForm.selectedStudioIds,
+        });
+        showToast({ message: 'Member updated successfully!', type: 'success' });
+        await fetchMembers();
+      } else {
+        await inviteMember({
+          email: inviteForm.email,
+          firstName,
+          lastName,
+          accessLevel: isAllStudios ? 'Full Access' : 'Specific Event',
+          role: inviteForm.role,
+          allowedEventIds: [],
+          allowedWorkspaceIds: isAllStudios ? workspaces.map(w => w.id) : inviteForm.selectedStudioIds,
+          location: inviteForm.location,
+          org: user?.companyName || 'Photmo Inc.',
+          accessScope 
+        } as any);
+        showToast({ message: 'Invitation sent successfully!', type: 'success' });
+        await fetchInvitations();
+        setMemberStatusFilter('Pending');
+      }
 
-    setIsAddMemberModalOpen(false);
-    setEditingMemberId(null);
-    setInviteForm({ fullName: '', email: '', location: '', role: 'Studio Member', selectedStudioIds: ['all'], message: '' });
+      setIsAddMemberModalOpen(false);
+      setEditingMemberId(null);
+      setInviteForm({ fullName: '', email: '', location: '', role: 'Studio Member', selectedStudioIds: ['all'], message: '' });
+    } catch (error: any) {
+      console.error('Error saving member:', error);
+      showToast({ message: error.message || 'Failed to save member. Please try again.', type: 'error' });
+    }
   };
 
-  const toggleWorkspaceMember = (memberId: string) => {
+  const toggleWorkspaceMember = async (memberId: string) => {
       if (!managingMembersWorkspace) return;
       const member = members.find(m => m.id === memberId);
       if (!member) return;
@@ -505,11 +514,19 @@ const WorkspacesPage: React.FC = () => {
       const currentWS = member.allowedWorkspaceIds || [];
       const hasAccess = currentWS.includes(managingMembersWorkspace?.id);
 
-      if (hasAccess) {
-          if (member.isOwner || member.role === 'Owner' || member.role === 'SuperAdmin / Owner') return;
-          updateMember(memberId, { allowedWorkspaceIds: currentWS.filter(id => id !== managingMembersWorkspace?.id) });
-      } else {
-          updateMember(memberId, { allowedWorkspaceIds: [...currentWS, managingMembersWorkspace?.id] });
+      try {
+        if (hasAccess) {
+            if (member.isOwner || member.role === 'Owner' || member.role === 'SuperAdmin / Owner') return;
+            await updateMember(memberId, { allowedWorkspaceIds: currentWS.filter(id => id !== managingMembersWorkspace?.id) });
+            showToast({ message: `${member.firstName} ${member.lastName} removed from workspace!`, type: 'success' });
+        } else {
+            await updateMember(memberId, { allowedWorkspaceIds: [...currentWS, managingMembersWorkspace?.id] });
+            showToast({ message: `${member.firstName} ${member.lastName} added to workspace!`, type: 'success' });
+        }
+        await fetchMembers();
+      } catch (error: any) {
+        console.error('Error updating workspace access:', error);
+        showToast({ message: 'Failed to update workspace access. Please try again.', type: 'error' });
       }
   };
 
@@ -1078,13 +1095,22 @@ const WorkspacesPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-4 w-full pt-4">
             <Button variant="outline" onClick={() => setMemberToDelete(null)} className="w-full h-12 rounded-xl text-[11px] font-black uppercase tracking-widest border-slate-200">Cancel</Button>
             <Button 
-              onClick={() => {
-                if (memberToDelete?.isPending) {
-                  deletePendingMember(memberToDelete.id);
-                } else if (memberToDelete) {
-                  deleteMember(memberToDelete.id);
+              onClick={async () => {
+                try {
+                  if (memberToDelete?.isPending) {
+                    await deletePendingMember(memberToDelete.id);
+                    showToast({ message: 'Invitation cancelled successfully!', type: 'success' });
+                    await fetchInvitations();
+                  } else if (memberToDelete) {
+                    await deleteMember(memberToDelete.id);
+                    showToast({ message: `${memberToDelete.firstName} ${memberToDelete.lastName} deleted successfully!`, type: 'success' });
+                    await fetchMembers();
+                  }
+                  setMemberToDelete(null);
+                } catch (error: any) {
+                  console.error('Error deleting member:', error);
+                  showToast({ message: error.message || 'Failed to delete member. Please try again.', type: 'error' });
                 }
-                setMemberToDelete(null);
               }} 
               className="w-full h-12 rounded-xl text-[11px] font-black uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 transition-colors"
             >
