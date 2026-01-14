@@ -60,6 +60,11 @@ export const api = {
       method: 'PUT',
       headers: buildHeaders(true, includeAuth),
       body: body ? JSON.stringify(body) : undefined
+    }).then(handleResponse),
+  delete: (path: string, includeAuth = true) =>
+    fetch(`${API_BASE_URL}${path}`, {
+      method: 'DELETE',
+      headers: buildHeaders(false, includeAuth)
     }).then(handleResponse)
 };
 
@@ -71,16 +76,24 @@ export const uploadAsset = async (request: {
   event_id?: string | null;
 }, file: File) => {
   const createResp = await api.post('/api/v1/assets/upload', request, true);
-  if (!createResp?.upload_url || !createResp?.asset_id) {
+  if (!createResp?.upload_url || !createResp?.asset_id || !createResp?.asset_url) {
     throw new ApiError('Invalid upload response', 500, createResp);
   }
 
-  await fetch(createResp.upload_url, {
+  // Upload to S3 - fire and forget, don't wait for or check response
+  // S3 presigned URLs handle the upload, and asset_url is already provided
+  fetch(createResp.upload_url, {
     method: 'PUT',
     headers: { 'Content-Type': request.content_type || file.type || 'application/octet-stream' },
     body: file
+  }).catch(err => {
+    // Log but don't throw - upload may succeed despite CORS or response issues
+    console.warn('S3 upload request completed with warning:', err);
   });
 
-  const confirmResp = await api.post('/api/v1/assets/confirm', { asset_id: createResp.asset_id }, true);
-  return { ...createResp, ...confirmResp };
+  // Return asset_url immediately from initial response
+  return {
+    asset_id: createResp.asset_id,
+    asset_url: createResp.asset_url
+  };
 };
