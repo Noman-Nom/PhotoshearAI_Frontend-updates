@@ -46,6 +46,7 @@ export interface InvitationDetailsResponseAPI {
   org: string;
   access_level: string;
   role: string | null;
+  workspace_names: string[];
 }
 
 export interface InvitationAcceptRequestAPI {
@@ -110,7 +111,7 @@ export const invitationsApi = {
   },
 
   // Public endpoints (no auth required)
-  
+
   /**
    * Get invitation details for the accept page
    * GET /api/v1/invitations/{token}
