@@ -54,6 +54,31 @@ export interface PermissionCategoryAPI {
   permissions: PermissionResponseAPI[];
 }
 
+// Role member management types
+export interface RoleMemberInfoAPI {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  initials: string;
+}
+
+export interface RoleMembersResponseAPI {
+  role_id: string;
+  role_name: string;
+  members: RoleMemberInfoAPI[];
+  member_count: number;
+}
+
+export interface RoleMemberReassignmentAPI {
+  member_id: string;
+  new_role_id: string;
+}
+
+export interface RoleDeleteWithReassignmentAPI {
+  reassignments: RoleMemberReassignmentAPI[];
+}
+
 // ============================================================================
 // API Client
 // ============================================================================
@@ -103,6 +128,28 @@ export const rolesApi = {
   delete: async (roleId: string): Promise<void> => {
     await api.delete(`/api/v1/roles/${roleId}`, true);
   },
+
+  /**
+   * Get members assigned to a role
+   * GET /api/v1/roles/{role_id}/members
+   */
+  getMembers: async (roleId: string): Promise<RoleMembersResponseAPI> => {
+    return api.get(`/api/v1/roles/${roleId}/members`, true);
+  },
+
+  /**
+   * Delete a role with member reassignment
+   * POST /api/v1/roles/{role_id}/delete-with-reassignment
+   * Reassigns all members to different roles before deleting
+   */
+  deleteWithReassignment: async (
+    roleId: string,
+    reassignments: RoleMemberReassignmentAPI[]
+  ): Promise<void> => {
+    await api.post(`/api/v1/roles/${roleId}/delete-with-reassignment`, {
+      reassignments
+    }, true);
+  },
 };
 
 export const permissionsApi = {
@@ -114,3 +161,4 @@ export const permissionsApi = {
     return api.get('/api/v1/permissions', true);
   },
 };
+

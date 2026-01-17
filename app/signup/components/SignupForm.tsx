@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,6 +7,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import { PasswordInput } from '../../../components/ui/PasswordInput';
 import { Select } from '../../../components/ui/Select';
 import { COUNTRIES } from '../../../constants';
 import { cn } from '../../../utils/cn';
@@ -45,13 +45,13 @@ export const SignupForm: React.FC = () => {
   // Auto-populate URL based on Company Name
   useEffect(() => {
     if (companyName && !isSubmitting) {
-       const slug = companyName
+      const slug = companyName
         .toLowerCase()
         .trim()
         .replace(/\s+/g, '-')
         .replace(/[^\w-]+/g, '')
         .replace(/--+/g, '-');
-       setValue('url', slug, { shouldValidate: true });
+      setValue('url', slug, { shouldValidate: true });
     }
   }, [companyName, setValue, isSubmitting]);
 
@@ -135,7 +135,7 @@ export const SignupForm: React.FC = () => {
           {...register('country')}
           className="bg-white border-slate-200 focus:ring-slate-900"
         />
-        
+
         <div className="space-y-1.5 text-start">
           <label className="text-sm font-medium leading-none text-slate-700">{t('phone')}</label>
           <div className={cn("relative flex", isRTL && "flex-row-reverse")}>
@@ -171,17 +171,15 @@ export const SignupForm: React.FC = () => {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input
+        <PasswordInput
           label={t('password')}
-          type="password"
           placeholder="••••••••"
           error={errors.password?.message}
           {...register('password')}
           className="bg-white border-slate-200 focus:ring-slate-900"
         />
-        <Input
+        <PasswordInput
           label={t('confirm_password')}
-          type="password"
           placeholder="••••••••"
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
@@ -189,9 +187,9 @@ export const SignupForm: React.FC = () => {
         />
       </div>
 
-      <Button 
-        type="submit" 
-        className="w-full mt-2 bg-[#0F172A] hover:bg-[#1E293B] text-white py-2.5 h-11" 
+      <Button
+        type="submit"
+        className="w-full mt-2 bg-[#0F172A] hover:bg-[#1E293B] text-white py-2.5 h-11"
         isLoading={isSubmitting}
       >
         {t('create_account')}

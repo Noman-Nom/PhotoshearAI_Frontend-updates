@@ -9,6 +9,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import { PasswordInput } from '../../../components/ui/PasswordInput';
 import { cn } from '../../../utils/cn';
 
 const passwordSchema = z.object({
@@ -25,7 +26,7 @@ export const ForgotPasswordForm: React.FC = () => {
   const navigate = useNavigate();
   const { forgotPasswordSendOtp, verifyResetOtp, resetPassword, status, resetEmail, resetStep, setResetStep } = useAuth();
   const { t, isRTL } = useTranslation();
-  
+
   const [error, setError] = useState<string | null>(null);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -164,7 +165,7 @@ export const ForgotPasswordForm: React.FC = () => {
           ))}
         </div>
         {error && <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs font-bold border border-red-100">{error}</div>}
-        
+
         <div className="space-y-4">
           <Button onClick={onVerifyOtp} className="w-full bg-[#0F172A] hover:bg-[#1E293B] h-12 rounded-xl font-bold shadow-lg" disabled={otp.join('').length !== 6} isLoading={status === 'LOADING'}>
             Verify OTP
@@ -173,7 +174,7 @@ export const ForgotPasswordForm: React.FC = () => {
           <div className="flex flex-col items-center gap-3">
             <p className="text-sm text-slate-500">
               Didn't receive the code?{' '}
-              <button 
+              <button
                 onClick={handleResend}
                 disabled={resendCooldown > 0}
                 className={cn(
@@ -184,9 +185,9 @@ export const ForgotPasswordForm: React.FC = () => {
                 {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
               </button>
             </p>
-            
-            <button 
-              onClick={() => setResetStep('EMAIL')} 
+
+            <button
+              onClick={() => setResetStep('EMAIL')}
               className="flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-slate-600 transition-colors"
             >
               <ArrowLeft size={14} className={isRTL ? "rotate-180" : ""} />
@@ -206,9 +207,9 @@ export const ForgotPasswordForm: React.FC = () => {
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Set New Password</h3>
           <p className="text-xs text-slate-500">Must be at least 8 characters with 1 uppercase and 1 number.</p>
         </div>
-        
+
         {error && <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs font-bold border border-red-100">{error}</div>}
-        
+
         <Input
           label="EMAIL"
           type="email"
@@ -218,26 +219,22 @@ export const ForgotPasswordForm: React.FC = () => {
           leftIcon={<Mail size={16} />}
         />
 
-        <Input
+        <PasswordInput
           label="NEW PASSWORD"
-          type="password"
           placeholder="••••••••"
           error={passErrors.password?.message}
           {...regPass('password')}
           className="bg-white border-slate-200"
-          leftIcon={<Lock size={16} />}
         />
-        
-        <Input
+
+        <PasswordInput
           label="CONFIRM NEW PASSWORD"
-          type="password"
           placeholder="••••••••"
           error={passErrors.confirmPassword?.message}
           {...regPass('confirmPassword')}
           className="bg-white border-slate-200"
-          leftIcon={<ShieldCheck size={16} />}
         />
-        
+
         <Button type="submit" className="w-full bg-[#0F172A] hover:bg-[#1E293B] h-12 rounded-xl font-bold" isLoading={status === 'LOADING'}>
           Save Password
         </Button>
@@ -254,7 +251,7 @@ export const ForgotPasswordForm: React.FC = () => {
       <div className="space-y-2">
         <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Password Reset!</h3>
         <p className="text-slate-500 text-sm leading-relaxed">
-          Your password has been successfully updated. <br/>Redirecting you to login...
+          Your password has been successfully updated. <br />Redirecting you to login...
         </p>
       </div>
       <div className="pt-4 flex justify-center gap-1">

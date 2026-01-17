@@ -1,19 +1,60 @@
-
+/**
+ * Authentication context provider.
+ * 
+ * Manages auth state, session validation, and cross-subdomain token sync.
+ * Uses authApi service for all API calls with proper TypeScript types.
+ * Listens for session expiry events from API layer for global 401 handling.
+ */
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { User, AuthStatus } from '../types';
-import { api, setAuthToken, getAuthToken } from '../utils/api';
+import { setAuthToken, getAuthToken, SESSION_EXPIRED_EVENT } from '../utils/api';
 import { mapUserFromApi } from '../utils/mappers';
-import { getSubdomain, redirectToSubdomain, isOnMainDomain } from '../utils/subdomain';
+import { getSubdomain, isOnMainDomain } from '../utils/subdomain';
+import * as authApi from '../services/authApi';
+
+
+// =============================================================================
+// Types
+// =============================================================================
 
 type ResetStep = 'EMAIL' | 'OTP' | 'PASSWORD' | 'SUCCESS';
+
+interface LoginData {
+  email: string;
+  password: string;
+}
+
+interface RegisterData {
+  email: string;
+  password: string;
+  firstName?: string;
+  first_name?: string;
+  lastName?: string;
+  last_name?: string;
+  companyName?: string;
+  company_name?: string;
+  url?: string;
+  companyUrl?: string;
+  company_url?: string;
+  country: string;
+  phone: string;
+  isInvitation?: boolean;
+  is_invitation?: boolean;
+}
+
+interface CompleteProfileData {
+  companyName: string;
+  companyUrl: string;
+  phone: string;
+}
 
 interface AuthContextType {
   user: User | null;
   status: AuthStatus;
-  login: (data: any) => Promise<void>;
-  register: (data: any) => Promise<void>;
+  login: (data: LoginData) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   googleLogin: (token: string) => Promise<{ needsProfileCompletion: boolean }>;
-  completeOAuthProfile: (data: { companyName: string; companyUrl: string; phone: string }) => Promise<void>;
+  completeOAuthProfile: (data: CompleteProfileData) => Promise<void>;
   setOauthPassword: (password: string) => Promise<void>;
   updateUserProfile: (data: Partial<User>) => void;
   verifyOtp: (otp: string) => Promise<void>;
@@ -29,94 +70,157 @@ interface AuthContextType {
   resetEmail: string | null;
   resetStep: ResetStep;
   needsProfileCompletion: boolean;
+  // Session expiry handling
+  sessionExpired: boolean;
+  clearSessionExpired: () => void;
 }
+
+// =============================================================================
+// Constants
+// =============================================================================
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Local storage keys
-const CURRENT_USER_KEY = 'auth_user';
-const ACTIVE_PENDING_EMAIL_KEY = 'active_pending_email';
-const PENDING_RESET_KEY = 'photmo_pending_reset_v1';
-const RESET_STEP_KEY = 'photmo_reset_step_v1';
-const OAUTH_PROFILE_PENDING_KEY = 'photmo_oauth_profile_pending_v1';
+const STORAGE_KEYS = {
+  CURRENT_USER: 'auth_user',
+  PENDING_EMAIL: 'active_pending_email',
+  PENDING_RESET: 'photmo_pending_reset_v1',
+  RESET_STEP: 'photmo_reset_step_v1',
+  OAUTH_PROFILE_PENDING: 'photmo_oauth_profile_pending_v1',
+} as const;
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Clear all auth-related state from localStorage.
+ * Used when logging out or when token is invalidated.
+ */
+function clearLocalAuthStorage(): void {
+  localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  localStorage.removeItem(STORAGE_KEYS.PENDING_EMAIL);
+  localStorage.removeItem(STORAGE_KEYS.PENDING_RESET);
+  localStorage.removeItem(STORAGE_KEYS.RESET_STEP);
+  localStorage.removeItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING);
+}
+
+/**
+ * Load user from localStorage on initial render.
+ */
+function loadStoredUser(): User | null {
+  try {
+    const storedUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+    return storedUser ? JSON.parse(storedUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load pending reset email from localStorage.
+ */
+function loadStoredResetEmail(): string | null {
+  try {
+    const pending = localStorage.getItem(STORAGE_KEYS.PENDING_RESET);
+    return pending ? JSON.parse(pending).email : null;
+  } catch {
+    return null;
+  }
+}
+
+// =============================================================================
+// Provider
+// =============================================================================
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const storedUser = localStorage.getItem(CURRENT_USER_KEY);
-      return storedUser ? JSON.parse(storedUser) : null;
-    } catch (e) {
-      return null;
-    }
-  });
-  
+  const [user, setUser] = useState<User | null>(loadStoredUser);
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
-  const [pendingUserEmail, setPendingUserEmail] = useState<string | null>(() => {
-    return localStorage.getItem(ACTIVE_PENDING_EMAIL_KEY);
-  });
+  const [pendingUserEmail, setPendingUserEmail] = useState<string | null>(() =>
+    localStorage.getItem(STORAGE_KEYS.PENDING_EMAIL)
+  );
+  const [resetEmail, setResetEmail] = useState<string | null>(loadStoredResetEmail);
+  const [resetStep, setResetStepState] = useState<ResetStep>(() =>
+    (localStorage.getItem(STORAGE_KEYS.RESET_STEP) as ResetStep) || 'EMAIL'
+  );
+  const [needsProfileCompletion, setNeedsProfileCompletion] = useState<boolean>(() =>
+    localStorage.getItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING) === 'true'
+  );
+  const [sessionExpired, setSessionExpired] = useState<boolean>(false);
 
-  const [resetEmail, setResetEmail] = useState<string | null>(() => {
-    try {
-      const pending = localStorage.getItem(PENDING_RESET_KEY);
-      return pending ? JSON.parse(pending).email : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  /**
+   * Clear session expired flag (after user acknowledges or navigates to login)
+   */
+  const clearSessionExpired = useCallback(() => {
+    setSessionExpired(false);
+  }, []);
 
-  const [resetStep, setResetStepState] = useState<ResetStep>(() => {
-    return (localStorage.getItem(RESET_STEP_KEY) as ResetStep) || 'EMAIL';
-  });
-  const [needsProfileCompletion, setNeedsProfileCompletion] = useState<boolean>(() => {
-    return localStorage.getItem(OAUTH_PROFILE_PENDING_KEY) === 'true';
-  });
+  /**
+   * Clear all auth state (memory + localStorage).
+   */
+  const clearAllAuthState = useCallback(() => {
+    setUser(null);
+    setAuthToken(null);
+    clearLocalAuthStorage();
+    setPendingUserEmail(null);
+    setResetEmail(null);
+    setResetStepState('EMAIL');
+    setNeedsProfileCompletion(false);
+    setStatus(AuthStatus.IDLE);
+  }, []);
+
+  // Listen for session expiry events from API layer (401 responses)
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      // Only show session expired if user was previously logged in
+      if (user) {
+        setSessionExpired(true);
+        clearAllAuthState();
+      }
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, [user, clearAllAuthState]);
 
   const setResetStep = useCallback((step: ResetStep) => {
     setResetStepState(step);
-    localStorage.setItem(RESET_STEP_KEY, step);
+    localStorage.setItem(STORAGE_KEYS.RESET_STEP, step);
   }, []);
 
-  const login = useCallback(async (data: any) => {
+  const login = useCallback(async (data: LoginData) => {
     setStatus(AuthStatus.LOADING);
     try {
-      // Extract subdomain from current URL
       const currentSubdomain = getSubdomain();
-      
-      // Add subdomain to login request
-      const loginData = {
-        ...data,
-        subdomain: currentSubdomain
-      };
-      
-      const resp = await api.post('/api/v1/auth/login', loginData, false);
+      const resp = await authApi.login({
+        email: data.email,
+        password: data.password,
+        subdomain: currentSubdomain,
+      });
+
       if (resp?.token) setAuthToken(resp.token);
       if (resp?.user) {
         const mappedUser = mapUserFromApi(resp.user);
-        setUser(mappedUser);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
-        
-        // Store isOwner flag in user object
         if (resp.isOwner !== undefined) {
           mappedUser.isOwner = resp.isOwner;
-          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
         }
+        setUser(mappedUser);
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(mappedUser));
       }
-      
+
       // Handle redirect after login
-      if (resp?.subdomain) {
-        // If logged in from app.fotoshareai.com, redirect to user's org subdomain with workspaces route
-        if (isOnMainDomain()) {
-          setStatus(AuthStatus.SUCCESS);
-          // Redirect to subdomain with workspaces route
-          const protocol = window.location.protocol;
-          window.location.href = `${protocol}//${resp.subdomain}.fotoshareai.com/#/workspaces`;
-          return; // Stop execution, redirect will happen
-        }
-        // If on specific subdomain, stay there (no redirect needed)
+      if (resp?.subdomain && isOnMainDomain()) {
+        setStatus(AuthStatus.SUCCESS);
+        const protocol = window.location.protocol;
+        window.location.href = `${protocol}//${resp.subdomain}.fotoshareai.com/#/workspaces`;
+        return;
       }
-      
+
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -125,45 +229,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const googleLogin = useCallback(async (token: string) => {
     setStatus(AuthStatus.LOADING);
     try {
-      const resp = await api.post('/api/v1/auth/google/login', { token }, false);
+      const resp = await authApi.googleLogin({ token });
       if (resp?.token) setAuthToken(resp.token);
       if (resp?.user) {
         const mappedUser = mapUserFromApi(resp.user);
         setUser(mappedUser);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(mappedUser));
       }
       const pending = !!resp?.needs_profile_completion;
       setNeedsProfileCompletion(pending);
       if (pending) {
-        localStorage.setItem(OAUTH_PROFILE_PENDING_KEY, 'true');
+        localStorage.setItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING, 'true');
       } else {
-        localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
+        localStorage.removeItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING);
       }
       setStatus(AuthStatus.SUCCESS);
       return { needsProfileCompletion: pending };
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
   }, []);
 
-  const completeOAuthProfile = useCallback(async (data: { companyName: string; companyUrl: string; phone: string }) => {
+  const completeOAuthProfile = useCallback(async (data: CompleteProfileData) => {
     setStatus(AuthStatus.LOADING);
     try {
-      const resp = await api.post('/api/v1/auth/complete-profile', {
+      const resp = await authApi.completeOAuthProfile({
         company_name: data.companyName,
         company_url: data.companyUrl,
-        phone: data.phone
-      }, true);
+        phone: data.phone,
+      });
       if (resp?.user) {
         const mappedUser = mapUserFromApi(resp.user);
         setUser(mappedUser);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(mappedUser));
       }
       setNeedsProfileCompletion(false);
-      localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
+      localStorage.removeItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING);
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -172,33 +276,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setOauthPassword = useCallback(async (password: string) => {
     setStatus(AuthStatus.LOADING);
     try {
-      await api.post('/api/v1/auth/set-password', { password }, true);
+      await authApi.setPassword({ password });
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
   }, []);
 
-  const register = useCallback(async (data: any) => {
+  const register = useCallback(async (data: RegisterData) => {
     setStatus(AuthStatus.LOADING);
     try {
-      const payload = {
+      const payload: authApi.SignupRequest = {
         email: data.email,
-        first_name: data.firstName ?? data.first_name,
-        last_name: data.lastName ?? data.last_name,
+        first_name: data.firstName ?? data.first_name ?? '',
+        last_name: data.lastName ?? data.last_name ?? '',
         password: data.password,
-        company_name: data.companyName ?? data.company_name,
-        company_url: data.url ?? data.companyUrl ?? data.company_url,
+        company_name: data.companyName ?? data.company_name ?? '',
+        company_url: data.url ?? data.companyUrl ?? data.company_url ?? '',
         country: data.country,
         phone: data.phone,
-        is_invitation: data.isInvitation ?? data.is_invitation ?? false
+        is_invitation: data.isInvitation ?? data.is_invitation ?? false,
       };
-      await api.post('/api/v1/auth/signup', payload, false);
+      await authApi.signup(payload);
       setPendingUserEmail(data.email);
-      localStorage.setItem(ACTIVE_PENDING_EMAIL_KEY, data.email);
+      localStorage.setItem(STORAGE_KEYS.PENDING_EMAIL, data.email);
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -209,10 +313,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated = { ...(prev || {}) } as User;
       Object.entries(data).forEach(([key, value]) => {
         if (value !== undefined) {
-          (updated as any)[key] = value;
+          (updated as Record<string, unknown>)[key] = value;
         }
       });
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updated));
       return updated;
     });
   }, []);
@@ -221,17 +325,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStatus(AuthStatus.LOADING);
     try {
       if (!pendingUserEmail) throw new Error('No registration in progress for this email.');
-      const resp = await api.post('/api/v1/auth/verify-otp', { email: pendingUserEmail, otp }, false);
+      const resp = await authApi.verifyOtp({ email: pendingUserEmail, otp });
       if (resp?.token) setAuthToken(resp.token);
       if (resp?.user) {
         const mappedUser = mapUserFromApi(resp.user);
         setUser(mappedUser);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(mappedUser));
       }
       setPendingUserEmail(null);
-      localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
+      localStorage.removeItem(STORAGE_KEYS.PENDING_EMAIL);
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -239,19 +343,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resendOtp = useCallback(async () => {
     if (!pendingUserEmail) throw new Error('No active email for verification.');
-    await api.post('/api/v1/auth/resend-otp', { email: pendingUserEmail }, false);
+    await authApi.resendOtp({ email: pendingUserEmail });
   }, [pendingUserEmail]);
 
   // Forgot Password Logic
   const forgotPasswordSendOtp = useCallback(async (email: string) => {
     setStatus(AuthStatus.LOADING);
     try {
-      await api.post('/api/v1/auth/forgot-password', { email }, false);
-      localStorage.setItem(PENDING_RESET_KEY, JSON.stringify({ email }));
+      await authApi.forgotPassword({ email });
+      localStorage.setItem(STORAGE_KEYS.PENDING_RESET, JSON.stringify({ email }));
       setResetEmail(email);
       setResetStep('OTP');
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -260,14 +364,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const verifyResetOtp = useCallback(async (otp: string) => {
     setStatus(AuthStatus.LOADING);
     try {
-      const stored = localStorage.getItem(PENDING_RESET_KEY);
+      const stored = localStorage.getItem(STORAGE_KEYS.PENDING_RESET);
       if (!stored) throw new Error('Reset session expired.');
       const data = JSON.parse(stored);
-      const resp = await api.post('/api/v1/auth/verify-reset-otp', { email: data.email, otp }, false);
-      localStorage.setItem(PENDING_RESET_KEY, JSON.stringify({ email: data.email, reset_token: resp.reset_token }));
+      const resp = await authApi.verifyResetOtp({ email: data.email, otp });
+      localStorage.setItem(STORAGE_KEYS.PENDING_RESET, JSON.stringify({
+        email: data.email,
+        reset_token: resp.reset_token
+      }));
       setResetStep('PASSWORD');
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -276,16 +383,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetPassword = useCallback(async (newPassword: string) => {
     setStatus(AuthStatus.LOADING);
     try {
-      const stored = localStorage.getItem(PENDING_RESET_KEY);
+      const stored = localStorage.getItem(STORAGE_KEYS.PENDING_RESET);
       if (!stored) throw new Error('Reset session expired.');
       const { email, reset_token } = JSON.parse(stored);
-      await api.post('/api/v1/auth/reset-password', { email, new_password: newPassword, reset_token }, false);
-      localStorage.removeItem(PENDING_RESET_KEY);
-      localStorage.removeItem(RESET_STEP_KEY);
+      await authApi.resetPassword({ email, new_password: newPassword, reset_token });
+      localStorage.removeItem(STORAGE_KEYS.PENDING_RESET);
+      localStorage.removeItem(STORAGE_KEYS.RESET_STEP);
       setResetEmail(null);
       setResetStepState('EMAIL');
       setStatus(AuthStatus.SUCCESS);
-    } catch (err: any) {
+    } catch (err) {
       setStatus(AuthStatus.ERROR);
       throw err;
     }
@@ -293,26 +400,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     // First, call backend to revoke the session
-    try {
-      await api.post('/api/v1/auth/logout', undefined, true);
-    } catch {
-      // Ignore errors - we still want to clear local state
-    }
-    
+    await authApi.logout();
     // Clear all local state
-    setUser(null);
-    setAuthToken(null);
-    localStorage.removeItem(CURRENT_USER_KEY);
-    localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
-    localStorage.removeItem(PENDING_RESET_KEY);
-    localStorage.removeItem(RESET_STEP_KEY);
-    localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
-    setPendingUserEmail(null);
-    setResetEmail(null);
-    setResetStepState('EMAIL');
-    setNeedsProfileCompletion(false);
-    setStatus(AuthStatus.IDLE);
-  }, []);
+    clearAllAuthState();
+  }, [clearAllAuthState]);
 
   // Validate token on mount and when user navigates to this page
   useEffect(() => {
@@ -320,63 +411,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!token) {
       // No token - ensure we're logged out
       setUser(null);
-      localStorage.removeItem(CURRENT_USER_KEY);
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       return;
     }
-    
+
     setStatus(AuthStatus.LOADING);
-    api.get('/api/v1/auth/me', true)
+    authApi.getCurrentUser()
       .then((resp) => {
         if (resp) {
           const mappedUser = mapUserFromApi(resp);
           setUser(mappedUser);
-          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(mappedUser));
         }
         setStatus(AuthStatus.SUCCESS);
       })
       .catch(() => {
         // Token is invalid (revoked or expired) - clear everything
-        setAuthToken(null);
-        localStorage.removeItem(CURRENT_USER_KEY);
-        setUser(null);
-        localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
-        setNeedsProfileCompletion(false);
+        clearAllAuthState();
         setStatus(AuthStatus.ERROR);
       });
-  }, []);
+  }, [clearAllAuthState]);
 
   // Cross-subdomain token validation polling
   // Since localStorage doesn't sync across subdomains, we poll the cookie
   // This detects when user logs out from another subdomain
   useEffect(() => {
     let lastToken = getAuthToken();
-    
+
     const checkTokenChange = () => {
       const currentToken = getAuthToken();
-      
+
       // Token was removed (logout from another subdomain)
       if (lastToken && !currentToken) {
-        setUser(null);
-        localStorage.removeItem(CURRENT_USER_KEY);
-        localStorage.removeItem(ACTIVE_PENDING_EMAIL_KEY);
-        localStorage.removeItem(PENDING_RESET_KEY);
-        localStorage.removeItem(RESET_STEP_KEY);
-        localStorage.removeItem(OAUTH_PROFILE_PENDING_KEY);
-        setPendingUserEmail(null);
-        setResetEmail(null);
-        setResetStepState('EMAIL');
-        setNeedsProfileCompletion(false);
-        setStatus(AuthStatus.IDLE);
+        clearAllAuthState();
       }
       // Token was added (login from another subdomain)
       else if (!lastToken && currentToken && !user) {
         // Validate the new token
-        api.get('/api/v1/auth/me', true)
+        authApi.getCurrentUser()
           .then((resp) => {
             if (resp) {
               const mappedUser = mapUserFromApi(resp);
               setUser(mappedUser);
-              localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(mappedUser));
+              localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(mappedUser));
             }
             setStatus(AuthStatus.SUCCESS);
           })
@@ -385,15 +462,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setStatus(AuthStatus.IDLE);
           });
       }
-      
+
       lastToken = currentToken;
     };
-    
+
     // Poll every 2 seconds for cross-subdomain changes
     const interval = setInterval(checkTokenChange, 2000);
-    
+
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, clearAllAuthState]);
 
   return (
     <AuthContext.Provider
@@ -417,7 +494,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pendingUserEmail,
         resetEmail,
         resetStep,
-        needsProfileCompletion
+        needsProfileCompletion,
+        sessionExpired,
+        clearSessionExpired,
       }}
     >
       {children}

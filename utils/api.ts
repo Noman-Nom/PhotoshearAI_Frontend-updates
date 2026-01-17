@@ -3,6 +3,18 @@ import { getApiBaseUrl } from './subdomain';
 const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'auth_token';
 
+// Session expiry event name - used to notify components of auth failures
+export const SESSION_EXPIRED_EVENT = 'fotoshare:session_expired';
+
+/**
+ * Dispatch session expired event for global handling
+ */
+export const dispatchSessionExpired = () => {
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, {
+    detail: { timestamp: Date.now() }
+  }));
+};
+
 /**
  * Get the root domain for cookie sharing
  * Returns .fotoshareai.com for production, empty for localhost
@@ -36,7 +48,7 @@ export const getAuthToken = (): string | null => {
 export const setAuthToken = (token: string | null) => {
   const domain = getCookieDomain();
   const secure = window.location.protocol === 'https:' ? '; secure' : '';
-  
+
   if (token) {
     // Set cookie with 30 days expiry, shared across all subdomains
     const cookieValue = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/${domain ? `; domain=${domain}` : ''}; max-age=2592000${secure}; samesite=lax`;
@@ -80,6 +92,14 @@ const handleResponse = async (res: Response) => {
     if (res.status === 204) return null;
     return res.json();
   }
+
+  // Handle 401 Unauthorized - session expired or invalid token
+  if (res.status === 401) {
+    // Clear token and dispatch session expired event
+    setAuthToken(null);
+    dispatchSessionExpired();
+  }
+
   let payload: any = null;
   try {
     payload = await res.json();
@@ -118,6 +138,7 @@ export const api = {
       credentials: 'include'
     }).then(handleResponse)
 };
+
 
 export const uploadAsset = async (request: {
   filename: string;

@@ -8,6 +8,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import { PasswordInput } from '../../../components/ui/PasswordInput';
 import { cn } from '../../../utils/cn';
 import { GOOGLE_CLIENT_ID } from '../../../utils/api';
 import { isOnMainDomain } from '../../../utils/subdomain';
@@ -93,7 +94,7 @@ export const LoginForm: React.FC = () => {
             {formError}
           </div>
         )}
-        
+
         <Input
           label={t('email')}
           type="text"
@@ -102,19 +103,18 @@ export const LoginForm: React.FC = () => {
           {...register('email')}
           className="bg-white border-slate-200 focus:ring-slate-900"
         />
-        
+
         <div className="space-y-1">
           <div className="flex items-center justify-between mb-1">
             <label className="text-sm font-medium leading-none text-slate-700">{t('password')}</label>
-            <Link 
-              to="/forgot-password" 
+            <Link
+              to="/forgot-password"
               className="text-sm text-slate-500 hover:text-slate-800"
             >
               {t('forgot_password_link')}
             </Link>
           </div>
-          <Input
-            type="password"
+          <PasswordInput
             placeholder={t('password')}
             error={errors.password?.message}
             {...register('password')}
@@ -123,20 +123,20 @@ export const LoginForm: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-            <input 
-                type="checkbox" 
-                id="remember" 
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer bg-transparent"
-            />
-            <label htmlFor="remember" className="text-sm text-slate-600 cursor-pointer font-medium select-none">
-                {t('remember_me')}
-            </label>
+          <input
+            type="checkbox"
+            id="remember"
+            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer bg-transparent"
+          />
+          <label htmlFor="remember" className="text-sm text-slate-600 cursor-pointer font-medium select-none">
+            {t('remember_me')}
+          </label>
         </div>
 
-        <Button 
-            type="submit" 
-            className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-white py-2.5 h-11" 
-            isLoading={isSubmitting}
+        <Button
+          type="submit"
+          className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-white py-2.5 h-11"
+          isLoading={isSubmitting}
         >
           {t('log_in')}
         </Button>

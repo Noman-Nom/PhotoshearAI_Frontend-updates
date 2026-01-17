@@ -6,6 +6,8 @@ import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { TeamProvider } from './contexts/TeamContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { BillingProvider } from './contexts/BillingContext';
+import { SessionExpiredModal } from './components/ui/SessionExpiredModal';
+
 
 // Pages
 import LoginPage from './app/login/page';
@@ -67,7 +69,7 @@ const AppRoutes = () => {
         <Route path="/verify-otp" element={<VerifyOtpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       </Route>
-      
+
       {/* Publicly accessible pages */}
       <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
       <Route path="/email-simulation" element={<EmailSimulationPage />} />
@@ -80,7 +82,7 @@ const AppRoutes = () => {
         <Route path="/all-members" element={<WorkspacesPage />} />
         <Route path="/guest-data" element={<WorkspacesPage />} />
         <Route path="/calendar" element={<GlobalCalendarPage />} />
-        
+
         <Route path="/workspaces/create" element={<CreateWorkspacePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
@@ -90,17 +92,17 @@ const AppRoutes = () => {
         <Route path="/events/:slug" element={<EventDetailsPage />} />
         <Route path="/events/:slug/:collectionSlug" element={<EventDetailsPage />} />
         <Route path="/events/:slug/:collectionSlug/view/:mediaId" element={<MediaViewPage viewContext="event" />} />
-        
+
         <Route path="/share-event/:eventId" element={<ShareEventPage />} />
-        
+
         <Route path="/guest-access/:eventId" element={<GuestAccessPage />} />
         <Route path="/guest-gallery/:eventId" element={<GuestGalleryPage />} />
         <Route path="/guest-gallery/:eventId/view/:mediaId" element={<MediaViewPage viewContext="guest" />} />
-        
+
         <Route path="/client-access/:eventId" element={<ClientAccessPage />} />
         <Route path="/client-gallery/:eventId" element={<ClientGalleryPage />} />
         <Route path="/client-gallery/:eventId/view/:mediaId" element={<MediaViewPage viewContext="client" />} />
-        
+
         <Route path="/team" element={<TeamPage />} />
         <Route path="/branding" element={<BrandingPage />} />
         <Route path="/branding/add" element={<AddBrandingPage />} />
@@ -122,6 +124,8 @@ const App: React.FC = () => {
             <BillingProvider>
               <Router>
                 <AppRoutes />
+                {/* Global session expired modal */}
+                <SessionExpiredModal />
               </Router>
             </BillingProvider>
           </WorkspaceProvider>

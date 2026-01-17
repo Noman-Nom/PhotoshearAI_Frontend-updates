@@ -2,13 +2,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Workspace } from '../constants';
 import { useAuth } from './AuthContext';
-import { workspaceApi } from '../services/workspaceApi';
+import { workspaceApi, WorkspaceMemberResponse } from '../services/workspaceApi';
 import { mapWorkspaceListToWorkspace, mapWorkspaceCreateToApi, mapWorkspaceUpdateToApi } from '../utils/workspaceMappers';
 
 interface WorkspaceContextType {
   workspaces: Workspace[];
   activeWorkspace: Workspace | null;
   loading: boolean;
+  isMutating: boolean; // True when any mutation is in progress
+  mutatingIds: Set<string>; // IDs of workspaces currently being mutated
   error: string | null;
   setActiveWorkspaceById: (id: string) => Promise<void>;
   createWorkspace: (data: Omit<Workspace, 'id' | 'eventsCount' | 'membersCount' | 'collaborators'>) => Promise<void>;
@@ -17,7 +19,7 @@ interface WorkspaceContextType {
   refreshWorkspaces: () => Promise<void>;
   addWorkspaceMember: (workspaceId: string, memberId: string, roleId?: string) => Promise<void>;
   removeWorkspaceMember: (workspaceId: string, memberId: string) => Promise<void>;
-  getWorkspaceMembers: (workspaceId: string) => Promise<any[]>;
+  getWorkspaceMembers: (workspaceId: string) => Promise<WorkspaceMemberResponse[]>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -26,25 +28,42 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { user } = useAuth();
   const [allWorkspaces, setAllWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
+  const [mutatingIds, setMutatingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  
+
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
     return localStorage.getItem('active_workspace_id');
   });
 
+  // Helper to add/remove mutating IDs
+  const startMutating = useCallback((id: string) => {
+    setIsMutating(true);
+    setMutatingIds(prev => new Set(prev).add(id));
+  }, []);
+
+  const stopMutating = useCallback((id: string) => {
+    setMutatingIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      if (next.size === 0) setIsMutating(false);
+      return next;
+    });
+  }, []);
+
   // Fetch workspaces from API
   const fetchWorkspaces = useCallback(async () => {
     if (!user) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       // Fetch all workspaces (API handles permission filtering server-side)
       const response = await workspaceApi.list({ page: 1, page_size: 100 });
       const mappedWorkspaces = response.items.map(mapWorkspaceListToWorkspace);
       setAllWorkspaces(mappedWorkspaces);
-      
+
       // Set initial active workspace if none is set
       if (!activeWorkspaceId && mappedWorkspaces.length > 0) {
         setActiveWorkspaceId(mappedWorkspaces[0].id);
@@ -93,7 +112,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const setActiveWorkspaceById = useCallback(async (id: string) => {
     setActiveWorkspaceId(id);
     localStorage.setItem('active_workspace_id', id);
-    
+
     try {
       await workspaceApi.setActive(id);
     } catch (err: any) {
@@ -105,11 +124,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const createWorkspace = useCallback(async (data: Omit<Workspace, 'id' | 'eventsCount' | 'membersCount' | 'collaborators'>) => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const apiData = mapWorkspaceCreateToApi(data);
       await workspaceApi.create(apiData);
-      
+
       // Refresh workspaces to get the new one
       await fetchWorkspaces();
     } catch (err: any) {
@@ -122,41 +141,43 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [fetchWorkspaces]);
 
   const updateWorkspace = useCallback(async (id: string, data: Partial<Workspace>) => {
-    setLoading(true);
+    startMutating(id);
     setError(null);
-    
+
+    // Optimistic update - store previous state for rollback
+    const previousWorkspaces = allWorkspaces;
+    setAllWorkspaces(prev =>
+      prev.map(w => w?.id === id ? { ...w, ...data } : w)
+    );
+
     try {
       const apiData = mapWorkspaceUpdateToApi(data);
       await workspaceApi.update(id, apiData);
-      
-      // Update local state optimistically
-      setAllWorkspaces(prev => 
-        prev.map(w => w?.id === id ? { ...w, ...data } : w)
-      );
     } catch (err: any) {
       const message = err?.message || 'Failed to update workspace';
       setError(message);
-      // Refresh to get server state
-      await fetchWorkspaces();
+      // Rollback optimistic update
+      setAllWorkspaces(previousWorkspaces);
       throw err;
     } finally {
-      setLoading(false);
+      stopMutating(id);
     }
-  }, [fetchWorkspaces]);
+  }, [allWorkspaces, startMutating, stopMutating]);
 
   const deleteWorkspace = useCallback(async (id: string) => {
-    setLoading(true);
+    startMutating(id);
     setError(null);
-    
+
+    // Optimistic update - store previous state for rollback
+    const previousWorkspaces = allWorkspaces;
+    setAllWorkspaces(prev => prev.filter(w => w?.id !== id));
+
     try {
       await workspaceApi.delete(id);
-      
-      // Remove from local state
-      setAllWorkspaces(prev => prev.filter(w => w?.id !== id));
-      
+
       // Clear active workspace if it was deleted
       if (activeWorkspaceId === id) {
-        const remaining = allWorkspaces.filter(w => w.id !== id);
+        const remaining = previousWorkspaces.filter(w => w.id !== id);
         const nextId = remaining.length > 0 ? remaining[0].id : null;
         setActiveWorkspaceId(nextId);
         if (nextId) localStorage.setItem('active_workspace_id', nextId);
@@ -165,11 +186,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err: any) {
       const message = err?.message || 'Failed to delete workspace';
       setError(message);
+      // Rollback optimistic update
+      setAllWorkspaces(previousWorkspaces);
       throw err;
     } finally {
-      setLoading(false);
+      stopMutating(id);
     }
-  }, [activeWorkspaceId, allWorkspaces]);
+  }, [activeWorkspaceId, allWorkspaces, startMutating, stopMutating]);
 
   const refreshWorkspaces = useCallback(async () => {
     return fetchWorkspaces();
@@ -199,11 +222,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [fetchWorkspaces]);
 
-  const getWorkspaceMembers = useCallback(async (workspaceId: string) => {
+  const getWorkspaceMembers = useCallback(async (workspaceId: string): Promise<WorkspaceMemberResponse[]> => {
     try {
       const response = await workspaceApi.listMembers(workspaceId, { page: 1, page_size: 100 });
       return response.items;
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching workspace members:', err);
       return [];
     }
@@ -214,6 +237,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       workspaces: filteredWorkspaces,
       activeWorkspace,
       loading,
+      isMutating,
+      mutatingIds,
       error,
       setActiveWorkspaceById,
       createWorkspace,

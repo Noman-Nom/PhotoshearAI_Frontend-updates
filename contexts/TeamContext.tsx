@@ -21,6 +21,8 @@ interface TeamContextType {
   pendingMembers: PendingMember[];
   roles: Role[];
   isLoading: boolean;
+  isMutating: boolean; // True when any mutation is in progress
+  mutatingIds: Set<string>; // IDs of items currently being mutated
   error: string | null;
   fetchMembers: () => Promise<void>;
   fetchRoles: () => Promise<void>;
@@ -48,6 +50,28 @@ interface TeamContextType {
 
 const TeamContext = createContext<TeamContextType | undefined>(undefined);
 
+// Default fallback roles when API returns empty or errors
+const DEFAULT_FALLBACK_ROLES: Role[] = [
+  {
+    id: 'default_studio_member',
+    name: 'Studio Member',
+    level: 'studio',
+    description: 'Basic studio team member',
+    permissions: [],
+    memberCount: 0,
+    isSystem: false
+  },
+  {
+    id: 'default_studio_manager',
+    name: 'Studio Manager',
+    level: 'studio',
+    description: 'Manages studio operations',
+    permissions: [],
+    memberCount: 0,
+    isSystem: false
+  }
+];
+
 // Keep localStorage keys for backward compatibility (deprecated)
 const TEAM_STORAGE_KEY = 'photmo_team_members_v1';
 const PENDING_STORAGE_KEY = 'photmo_pending_members_v1';
@@ -55,17 +79,34 @@ const ROLES_STORAGE_KEY = 'photmo_roles_v1';
 
 export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  
+
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);
+  const [mutatingIds, setMutatingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // Helper to add/remove mutating IDs
+  const startMutating = useCallback((id: string) => {
+    setIsMutating(true);
+    setMutatingIds(prev => new Set(prev).add(id));
+  }, []);
+
+  const stopMutating = useCallback((id: string) => {
+    setMutatingIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      if (next.size === 0) setIsMutating(false);
+      return next;
+    });
+  }, []);
 
   // Fetch team members from API
   const fetchMembers = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       setIsLoading(true);
       setError(null);
@@ -74,9 +115,10 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[TeamContext] Received team members:', response);
       const mappedMembers = response.items.map(mapTeamMemberListToFrontend);
       setMembers(mappedMembers);
-    } catch (err: any) {
+    } catch (err) {
       console.error('[TeamContext] Error fetching team members:', err);
-      setError(err.message || 'Failed to fetch team members');
+      const message = err instanceof Error ? err.message : 'Failed to fetch team members';
+      setError(message);
       setMembers([]);
     } finally {
       setIsLoading(false);
@@ -86,7 +128,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch roles from API
   const fetchRoles = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       setIsLoading(true);
       setError(null);
@@ -95,55 +137,18 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[TeamContext] Received roles:', response);
       const mappedRoles = response.items.map(mapRoleToFrontend);
       setRoles(mappedRoles);
-      
+
       // If no roles returned, provide default studio roles for UI functionality
       if (mappedRoles.length === 0) {
         console.warn('[TeamContext] No roles from API, using default studio roles');
-        setRoles([
-          { 
-            id: 'default_studio_member', 
-            name: 'Studio Member', 
-            level: 'studio',
-            description: 'Basic studio team member',
-            permissions: [], 
-            memberCount: 0,
-            isSystem: false
-          },
-          { 
-            id: 'default_studio_manager', 
-            name: 'Studio Manager', 
-            level: 'studio',
-            description: 'Manages studio operations',
-            permissions: [], 
-            memberCount: 0,
-            isSystem: false
-          }
-        ]);
+        setRoles(DEFAULT_FALLBACK_ROLES);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('[TeamContext] Error fetching roles:', err);
-      setError(err.message || 'Failed to fetch roles');
+      const message = err instanceof Error ? err.message : 'Failed to fetch roles';
+      setError(message);
       // Provide default roles on error to keep UI functional
-      setRoles([
-        { 
-          id: 'default_studio_member', 
-          name: 'Studio Member', 
-          level: 'studio',
-          description: 'Basic studio team member',
-          permissions: [], 
-          memberCount: 0,
-          isSystem: false
-        },
-        { 
-          id: 'default_studio_manager', 
-          name: 'Studio Manager', 
-          level: 'studio',
-          description: 'Manages studio operations',
-          permissions: [], 
-          memberCount: 0,
-          isSystem: false
-        }
-      ]);
+      setRoles(DEFAULT_FALLBACK_ROLES);
     } finally {
       setIsLoading(false);
     }
@@ -152,7 +157,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch invitations from API
   const fetchInvitations = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       setIsLoading(true);
       setError(null);
@@ -162,9 +167,10 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[TeamContext] Received invitations:', response);
       const mappedInvitations = response.items.map(mapInvitationToFrontend);
       setPendingMembers(mappedInvitations);
-    } catch (err: any) {
+    } catch (err) {
       console.error('[TeamContext] Error fetching invitations:', err);
-      setError(err.message || 'Failed to fetch invitations');
+      const message = err instanceof Error ? err.message : 'Failed to fetch invitations';
+      setError(message);
       setPendingMembers([]);
     } finally {
       setIsLoading(false);
@@ -177,7 +183,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(TEAM_STORAGE_KEY);
     localStorage.removeItem(PENDING_STORAGE_KEY);
     localStorage.removeItem(ROLES_STORAGE_KEY);
-    
+
     if (user) {
       console.log('[TeamContext] User authenticated, fetching data from API...');
       fetchMembers();
@@ -201,8 +207,14 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMembers(prev => [newMember, ...prev]);
   }, []);
 
-  // Update member via API
+  // Update member via API with optimistic update
   const updateMember = useCallback(async (id: string, data: Partial<TeamMember> & { roleId?: string; workspaceIds?: string[] }) => {
+    startMutating(id);
+
+    // Optimistic update - store previous state for rollback
+    const previousMembers = members;
+    setMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+
     try {
       setError(null);
       const apiData = mapTeamMemberUpdateToAPI(data);
@@ -212,22 +224,35 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       console.error('Error updating member:', err);
       setError(err.message || 'Failed to update member');
+      // Rollback optimistic update
+      setMembers(previousMembers);
       throw err;
+    } finally {
+      stopMutating(id);
     }
-  }, []);
+  }, [members, startMutating, stopMutating]);
 
-  // Delete member via API
+  // Delete member via API with optimistic update
   const deleteMember = useCallback(async (id: string) => {
+    startMutating(id);
+
+    // Optimistic update - store previous state for rollback
+    const previousMembers = members;
+    setMembers(prev => prev.filter(m => m.id !== id));
+
     try {
       setError(null);
       await teamApi.delete(id);
-      setMembers(prev => prev.filter(m => m.id !== id));
     } catch (err: any) {
       console.error('Error deleting member:', err);
       setError(err.message || 'Failed to delete member');
+      // Rollback optimistic update
+      setMembers(previousMembers);
       throw err;
+    } finally {
+      stopMutating(id);
     }
-  }, []);
+  }, [members, startMutating, stopMutating]);
 
   // Invite member via API
   const inviteMember = useCallback(async (data: {
@@ -290,10 +315,10 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (pendingIdx !== -1) {
       const invite = pendingMembers[pendingIdx] as any;
       const colors = ['bg-blue-100 text-blue-600', 'bg-purple-100 text-purple-600', 'bg-emerald-100 text-emerald-600', 'bg-orange-100 text-orange-600'];
-      
+
       const firstName = details.firstName || invite.firstName || email.split('@')[0];
       const lastName = details.lastName || invite.lastName || '';
-      
+
       const finalWorkspaceIds = invite.accessLevel === 'Full Access' && details.currentWorkspaceIds
         ? details.currentWorkspaceIds
         : (invite.allowedWorkspaceIds || []);
@@ -308,7 +333,7 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
         eventsCount: 0,
         accessLevel: invite.accessLevel,
         allowedEventIds: invite.allowedEventIds || [],
-        allowedWorkspaceIds: finalWorkspaceIds, 
+        allowedWorkspaceIds: finalWorkspaceIds,
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
         initials: (firstName[0] + (lastName[0] || '')).toUpperCase(),
         joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -373,6 +398,8 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pendingMembers,
       roles,
       isLoading,
+      isMutating,
+      mutatingIds,
       error,
       fetchMembers,
       fetchRoles,

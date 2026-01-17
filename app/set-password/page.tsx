@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AuthLayout } from '../../components/layouts/AuthLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 
 const passwordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters')
@@ -50,18 +50,16 @@ const SetPasswordPage: React.FC = () => {
           </div>
         )}
 
-        <Input
+        <PasswordInput
           label="Password"
-          type="password"
           placeholder="••••••••"
           error={errors.password?.message as string}
           {...register('password')}
           className="bg-white border-slate-200 focus:ring-slate-900"
         />
 
-        <Input
+        <PasswordInput
           label="Confirm Password"
-          type="password"
           placeholder="••••••••"
           error={errors.confirmPassword?.message as string}
           {...register('confirmPassword')}
