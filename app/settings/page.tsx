@@ -160,6 +160,12 @@ const SettingsPage: React.FC = () => {
   const [passwordError, setPasswordError] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
+  // Delete Account State
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
+
   // Refs
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const forgotOtpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -382,6 +388,30 @@ const SettingsPage: React.FC = () => {
     } catch (e: any) {
       console.error(e);
       setIsMfaChallengeOpen(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.toLowerCase() !== 'delete my account') {
+      setDeleteAccountError('Please type "delete my account" to confirm');
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    setDeleteAccountError('');
+
+    try {
+      await api.delete('/api/v1/users/me', true);
+      setIsDeleteAccountModalOpen(false);
+      showToast({ message: 'Account deleted successfully. Logging out...', type: 'success' });
+      // Wait a moment then logout
+      setTimeout(() => {
+        logout();
+        navigate('/login');
+      }, 1500);
+    } catch (e: any) {
+      setDeleteAccountError(e.message || 'Failed to delete account. Please try again.');
+      setIsDeletingAccount(false);
     }
   };
 
@@ -763,6 +793,40 @@ const SettingsPage: React.FC = () => {
                         </Card>
                       </div>
                     </section>
+
+                    {/* Delete Account Section - Only for Members (Non-Owners) */}
+                    {!isOwner && (
+                      <section className="mt-12">
+                        <div className="border-b border-red-200 pb-6 mb-10">
+                          <h2 className="text-2xl font-black text-red-600 uppercase tracking-tight">Danger Zone</h2>
+                          <p className="text-xs text-red-400 font-bold uppercase mt-1">Irreversible actions for your account</p>
+                        </div>
+
+                        <Card className="p-8 bg-red-50/50 border-red-200 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-8 hover:shadow-xl transition-all shadow-sm">
+                          <div className="flex items-center gap-6 flex-1 min-w-0">
+                            <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center border border-red-200 flex-shrink-0 shadow-inner">
+                              <Trash2 size={26} />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-base font-black text-red-700 uppercase tracking-tight">Delete Account</h4>
+                              <p className="text-xs text-red-500 mt-1 font-medium">Permanently delete your account and all associated data. This action cannot be undone.</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 w-full sm:w-auto">
+                            <button
+                              onClick={() => {
+                                setDeleteConfirmText('');
+                                setDeleteAccountError('');
+                                setIsDeleteAccountModalOpen(true);
+                              }}
+                              className="px-10 h-12 text-[11px] font-black uppercase tracking-[0.2em] text-white bg-red-600 rounded-2xl hover:bg-red-700 transition-all shadow-xl active:scale-95"
+                            >
+                              Delete Account
+                            </button>
+                          </div>
+                        </Card>
+                      </section>
+                    )}
                   </div>
                 )}
 
@@ -1334,6 +1398,60 @@ const SettingsPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-4">
             <Button variant="outline" onClick={() => setIsEmailVerifyOpen(false)} className="h-12 text-[10px] font-black uppercase tracking-widest border-slate-200 rounded-xl">Cancel</Button>
             <Button onClick={verifyEmailOtp} className="bg-[#0F172A] h-12 text-[10px] font-black uppercase tracking-widest shadow-xl rounded-xl">Verify & Save</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteAccountModalOpen}
+        onClose={() => setIsDeleteAccountModalOpen(false)}
+        title="Delete Account"
+        className="max-w-md w-full"
+      >
+        <div className="space-y-6 py-4 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <Trash2 className="text-red-600 w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h4 className="text-lg font-bold text-red-600 uppercase tracking-tight">Permanent Deletion</h4>
+            <p className="text-sm text-slate-500 font-medium leading-relaxed">
+              This action is <span className="font-bold text-red-600">irreversible</span>. All your data, memberships, and account information will be permanently deleted.
+            </p>
+          </div>
+
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-start">
+            <p className="text-xs text-red-600 font-bold mb-2">To confirm, type "delete my account" below:</p>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="delete my account"
+              className="bg-white border-red-200 focus:border-red-400 font-mono text-sm"
+            />
+          </div>
+
+          {deleteAccountError && (
+            <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs font-bold border border-red-100">
+              {deleteAccountError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteAccountModalOpen(false)}
+              className="h-12 text-[10px] font-black uppercase tracking-widest border-slate-200 rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteAccount}
+              isLoading={isDeletingAccount}
+              disabled={deleteConfirmText.toLowerCase() !== 'delete my account' || isDeletingAccount}
+              className="bg-red-600 hover:bg-red-700 h-12 text-[10px] font-black uppercase tracking-widest shadow-xl rounded-xl disabled:opacity-50"
+            >
+              Delete Forever
+            </Button>
           </div>
         </div>
       </Modal>
