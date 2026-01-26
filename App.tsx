@@ -6,6 +6,9 @@ import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { TeamProvider } from './contexts/TeamContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { BillingProvider } from './contexts/BillingContext';
+import { BrandingProvider } from './contexts/BrandingContext';
+import { EventsProvider } from './contexts/EventsContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { SessionExpiredModal } from './components/ui/SessionExpiredModal';
 
 
@@ -119,17 +122,23 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <LanguageProvider>
-        <TeamProvider>
-          <WorkspaceProvider>
-            <BillingProvider>
-              <Router>
-                <AppRoutes />
-                {/* Global session expired modal */}
-                <SessionExpiredModal />
-              </Router>
-            </BillingProvider>
-          </WorkspaceProvider>
-        </TeamProvider>
+        <ToastProvider>
+          <TeamProvider>
+            <WorkspaceProvider>
+              <BillingProvider>
+                <BrandingProvider>
+                  <EventsProvider>
+                    <Router>
+                      <AppRoutes />
+                      {/* Global session expired modal */}
+                      <SessionExpiredModal />
+                    </Router>
+                  </EventsProvider>
+                </BrandingProvider>
+              </BillingProvider>
+            </WorkspaceProvider>
+          </TeamProvider>
+        </ToastProvider>
       </LanguageProvider>
     </AuthProvider>
   );
