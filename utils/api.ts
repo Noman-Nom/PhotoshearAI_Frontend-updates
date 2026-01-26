@@ -170,3 +170,37 @@ export const uploadAsset = async (request: {
     asset_url: cleanUrl
   };
 };
+
+export const uploadEventMedia = async (
+  eventId: string,
+  collectionId: string,
+  file: File
+) => {
+  const request = {
+    collection_id: collectionId,
+    filename: file.name,
+    content_type: file.type || 'application/octet-stream',
+    size_bytes: file.size
+  };
+
+  const createResp = await api.post(`/api/v1/events/${eventId}/media/upload`, request, true);
+
+  if (!createResp?.upload_url || !createResp?.media_id) {
+    throw new ApiError('Invalid upload response', 500, createResp);
+  }
+
+  // Upload to S3
+  await fetch(createResp.upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': request.content_type },
+    body: file
+  });
+
+  // Clean URL similar to assets
+  const cleanUrl = createResp.media_url?.split('?')[0] || createResp.media_url;
+
+  return {
+    ...createResp,
+    media_url: cleanUrl
+  };
+};
