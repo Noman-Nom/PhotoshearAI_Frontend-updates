@@ -71,7 +71,8 @@ import { Input } from '../../components/ui/Input';
 import { TextArea } from '../../components/ui/TextArea';
 import { Select } from '../../components/ui/Select';
 import { cn } from '../../utils/cn';
-import { SHARED_EVENTS, loadGuestRegistry } from '../../constants';
+import { loadGuestRegistry } from '../../constants';
+import { useEvents } from '../../contexts/EventsContext';
 import { formatBytes } from '../../utils/formatters';
 import { EMAIL_REGEX } from '../../utils/validators';
 import { GuestRecord, Role } from '../../types';
@@ -164,6 +165,7 @@ const WorkspacesPage: React.FC = () => {
   const { user, logout } = useAuth();
   const { t, isRTL } = useTranslation();
   const { workspaces, setActiveWorkspaceById, deleteWorkspace } = useWorkspace();
+  const { events: allEvents } = useEvents();
   const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember, createRole, updateRole, deleteRole, fetchRoles, fetchMembers, fetchInvitations } = useTeam();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -205,13 +207,13 @@ const WorkspacesPage: React.FC = () => {
 
   // Calculate Global Storage Stats for the Menu Bar
   const globalStorageStats = useMemo(() => {
-    const totalSizeBytes = SHARED_EVENTS.reduce((acc, event) => acc + (event.totalSizeBytes || 0), 0);
+    const totalSizeBytes = allEvents.reduce((acc, event) => acc + (event.total_size_bytes || 0), 0);
     const limit = 1024 * 1024 * 1024; // 1 GB
     return {
       percentage: Math.min(100, Math.round((totalSizeBytes / limit) * 100)),
       formatted: formatBytes(totalSizeBytes)
     };
-  }, []);
+  }, [allEvents]);
 
   const rolesWithUserCounts = useMemo(() => {
     return roles.map(role => {
@@ -304,8 +306,9 @@ const WorkspacesPage: React.FC = () => {
   const workspacesWithStats = useMemo(() => {
     return workspaces.map(ws => {
       if (!ws) return null;
-      const wsEvents = SHARED_EVENTS.filter(e => e.workspaceId === ws.id);
-      const storage = wsEvents.reduce((acc, e) => acc + (e.totalSizeBytes || 0), 0);
+      // Filter events for this workspace from API data
+      const wsEvents = allEvents.filter(e => e.workspace_id === ws.id);
+      const storage = wsEvents.reduce((acc, e) => acc + (e.total_size_bytes || 0), 0);
 
       const relevantMembers = members.filter(m =>
         m.role === 'Owner' ||
@@ -322,7 +325,7 @@ const WorkspacesPage: React.FC = () => {
         memberAvatars: relevantMembers.map(m => `https://ui-avatars.com/api/?name=${m.firstName}+${m.lastName}&background=random&color=fff`)
       };
     }).filter(Boolean);
-  }, [workspaces, members]);
+  }, [workspaces, members, allEvents]);
 
   const filteredWorkspaces = workspacesWithStats.filter(ws =>
     ws?.name?.toLowerCase().includes(searchTerm.toLowerCase())
