@@ -117,16 +117,7 @@ export const assetsApi = {
    * Delete an asset
    */
   delete: async (assetId: string): Promise<AssetDeleteResponse> => {
-    const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://api.fotoshareai.com';
-    return fetch(`${API_BASE_URL}/api/v1/assets/${assetId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-      },
-    }).then(async (res) => {
-      if (!res.ok) throw new Error('Failed to delete asset');
-      return res.json();
-    });
+    return api.delete(`/api/v1/assets/${assetId}`, true);
   },
 
   /**

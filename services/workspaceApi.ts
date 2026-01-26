@@ -112,16 +112,16 @@ export const workspaceApi = {
   /**
    * List all accessible workspaces with pagination and search
    */
-  list: async (params?: { 
-    page?: number; 
-    page_size?: number; 
-    q?: string; 
+  list: async (params?: {
+    page?: number;
+    page_size?: number;
+    q?: string;
   }): Promise<PaginatedWorkspaceResponse> => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
     if (params?.q) queryParams.append('q', params.q);
-    
+
     const query = queryParams.toString();
     const path = `/api/v1/workspaces${query ? `?${query}` : ''}`;
     return api.get(path, true);
@@ -152,16 +152,7 @@ export const workspaceApi = {
    * Delete workspace (owners only)
    */
   delete: async (workspaceId: string): Promise<void> => {
-    const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://api.fotoshareai.com';
-    return fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-      }
-    }).then(res => {
-      if (!res.ok) throw new Error('Failed to delete workspace');
-      return undefined;
-    });
+    await api.delete(`/api/v1/workspaces/${workspaceId}`, true);
   },
 
   /**
@@ -172,16 +163,24 @@ export const workspaceApi = {
   },
 
   /**
+   * Get the current user's active workspace ID
+   */
+  getActive: async (): Promise<string | null> => {
+    const response = await api.get('/api/v1/workspaces/me/active', true);
+    return response?.active_workspace_id || null;
+  },
+
+  /**
    * List workspace members
    */
-  listMembers: async (workspaceId: string, params?: { 
-    page?: number; 
-    page_size?: number; 
+  listMembers: async (workspaceId: string, params?: {
+    page?: number;
+    page_size?: number;
   }): Promise<PaginatedWorkspaceMemberResponse> => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
-    
+
     const query = queryParams.toString();
     const path = `/api/v1/workspaces/${workspaceId}/members${query ? `?${query}` : ''}`;
     return api.get(path, true);
@@ -198,15 +197,6 @@ export const workspaceApi = {
    * Remove member from workspace
    */
   removeMember: async (workspaceId: string, memberId: string): Promise<void> => {
-    const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://api.fotoshareai.com';
-    return fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}/members/${memberId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-      }
-    }).then(res => {
-      if (!res.ok) throw new Error('Failed to remove member');
-      return undefined;
-    });
+    await api.delete(`/api/v1/workspaces/${workspaceId}/members/${memberId}`, true);
   }
 };
