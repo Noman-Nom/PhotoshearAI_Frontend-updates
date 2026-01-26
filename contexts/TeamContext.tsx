@@ -72,11 +72,6 @@ const DEFAULT_FALLBACK_ROLES: Role[] = [
   }
 ];
 
-// Keep localStorage keys for backward compatibility (deprecated)
-const TEAM_STORAGE_KEY = 'photmo_team_members_v1';
-const PENDING_STORAGE_KEY = 'photmo_pending_members_v1';
-const ROLES_STORAGE_KEY = 'photmo_roles_v1';
-
 export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
@@ -177,13 +172,8 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
-  // Initial data fetch and clear old localStorage data
+  // Initial data fetch
   useEffect(() => {
-    // Clear deprecated localStorage keys on mount
-    localStorage.removeItem(TEAM_STORAGE_KEY);
-    localStorage.removeItem(PENDING_STORAGE_KEY);
-    localStorage.removeItem(ROLES_STORAGE_KEY);
-
     if (user) {
       console.log('[TeamContext] User authenticated, fetching data from API...');
       fetchMembers();

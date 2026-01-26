@@ -313,7 +313,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated = { ...(prev || {}) } as User;
       Object.entries(data).forEach(([key, value]) => {
         if (value !== undefined) {
-          (updated as Record<string, unknown>)[key] = value;
+          (updated as unknown as Record<string, unknown>)[key] = value;
         }
       });
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updated));

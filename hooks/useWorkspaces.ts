@@ -9,7 +9,7 @@ export interface UseWorkspacesResult {
   total: number;
   page: number;
   pageSize: number;
-  
+
   // Actions
   fetchWorkspaces: (params?: { page?: number; page_size?: number; q?: string }) => Promise<void>;
   createWorkspace: (data: WorkspaceCreate) => Promise<WorkspaceResponse>;
@@ -30,7 +30,7 @@ export const useWorkspaces = (): UseWorkspacesResult => {
   const fetchWorkspaces = useCallback(async (params?: { page?: number; page_size?: number; q?: string }) => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const response = await workspaceApi.list(params);
       setWorkspaces(response.items);
@@ -49,7 +49,7 @@ export const useWorkspaces = (): UseWorkspacesResult => {
   const createWorkspace = useCallback(async (data: WorkspaceCreate): Promise<WorkspaceResponse> => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const newWorkspace = await workspaceApi.create(data);
       // Refresh the list to include the new workspace
@@ -67,11 +67,11 @@ export const useWorkspaces = (): UseWorkspacesResult => {
   const updateWorkspace = useCallback(async (id: string, data: WorkspaceUpdate): Promise<WorkspaceResponse> => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const updatedWorkspace = await workspaceApi.update(id, data);
       // Update local state optimistically
-      setWorkspaces(prev => 
+      setWorkspaces(prev =>
         prev.map(ws => ws.id === id ? { ...ws, ...data, id: ws.id } : ws)
       );
       return updatedWorkspace;
@@ -89,7 +89,7 @@ export const useWorkspaces = (): UseWorkspacesResult => {
   const deleteWorkspace = useCallback(async (id: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    
+
     try {
       await workspaceApi.delete(id);
       // Remove from local state
@@ -106,11 +106,10 @@ export const useWorkspaces = (): UseWorkspacesResult => {
 
   const setActiveWorkspace = useCallback(async (id: string): Promise<void> => {
     setError(null);
-    
+
     try {
       await workspaceApi.setActive(id);
-      // Store active workspace ID locally for quick access
-      localStorage.setItem('active_workspace_id', id);
+      // Active workspace is now persisted server-side only
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to set active workspace';
       setError(message);

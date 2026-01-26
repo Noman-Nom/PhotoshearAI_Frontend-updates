@@ -128,3 +128,28 @@ export interface PaymentMethod {
   isDefault?: boolean;
   billingAddress: BillingAddress;
 }
+
+export interface WorkspaceSettings {
+  photoGallery: boolean;
+  qrSharing: boolean;
+  downloadProtection: boolean;
+  clientComments: boolean;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  url?: string;
+  studioType?: string;
+  timezone?: string;
+  currency?: string;
+  colorTheme?: string;
+  logo?: string;
+  settings?: WorkspaceSettings;
+  status: 'Active' | 'Setup';
+  iconType: 'camera' | 'building' | 'heart' | 'star';
+  eventsCount: number;
+  membersCount: number;
+  collaborators: string[];
+}

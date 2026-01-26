@@ -32,9 +32,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [mutatingIds, setMutatingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
-    return localStorage.getItem('active_workspace_id');
-  });
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
 
   // Helper to add/remove mutating IDs
   const startMutating = useCallback((id: string) => {
@@ -59,15 +57,23 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setError(null);
 
     try {
-      // Fetch all workspaces (API handles permission filtering server-side)
-      const response = await workspaceApi.list({ page: 1, page_size: 100 });
+      // Fetch workspaces and active workspace ID in parallel
+      const [response, activeId] = await Promise.all([
+        workspaceApi.list({ page: 1, page_size: 100 }),
+        workspaceApi.getActive(),
+      ]);
+
       const mappedWorkspaces = response.items.map(mapWorkspaceListToWorkspace);
       setAllWorkspaces(mappedWorkspaces);
 
-      // Set initial active workspace if none is set
-      if (!activeWorkspaceId && mappedWorkspaces.length > 0) {
+      // Set active workspace from server, or default to first if none set
+      if (activeId && mappedWorkspaces.some(w => w.id === activeId)) {
+        setActiveWorkspaceId(activeId);
+      } else if (mappedWorkspaces.length > 0) {
+        // Set first workspace as active if none is set server-side
         setActiveWorkspaceId(mappedWorkspaces[0].id);
-        localStorage.setItem('active_workspace_id', mappedWorkspaces[0].id);
+        // Also persist to server
+        await workspaceApi.setActive(mappedWorkspaces[0].id).catch(() => { });
       }
     } catch (err: any) {
       const message = err?.message || 'Failed to fetch workspaces';
@@ -76,7 +82,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setLoading(false);
     }
-  }, [user, activeWorkspaceId]);
+  }, [user]);
 
   // Load workspaces on mount and when user changes
   useEffect(() => {
@@ -85,7 +91,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } else {
       setAllWorkspaces([]);
       setActiveWorkspaceId(null);
-      localStorage.removeItem('active_workspace_id');
     }
   }, [user, fetchWorkspaces]);
 
@@ -104,14 +109,16 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (activeWorkspaceId && !filteredWorkspaces.some(w => w?.id === activeWorkspaceId)) {
       const nextId = filteredWorkspaces.length > 0 ? filteredWorkspaces[0].id : null;
       setActiveWorkspaceId(nextId);
-      if (nextId) localStorage.setItem('active_workspace_id', nextId);
-      else localStorage.removeItem('active_workspace_id');
+      // Persist to server if valid
+      if (nextId) {
+        workspaceApi.setActive(nextId).catch(() => { });
+      }
     }
   }, [filteredWorkspaces, activeWorkspaceId]);
 
   const setActiveWorkspaceById = useCallback(async (id: string) => {
+    // Optimistic update
     setActiveWorkspaceId(id);
-    localStorage.setItem('active_workspace_id', id);
 
     try {
       await workspaceApi.setActive(id);
@@ -180,8 +187,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const remaining = previousWorkspaces.filter(w => w.id !== id);
         const nextId = remaining.length > 0 ? remaining[0].id : null;
         setActiveWorkspaceId(nextId);
-        if (nextId) localStorage.setItem('active_workspace_id', nextId);
-        else localStorage.removeItem('active_workspace_id');
+        // Persist to server if valid
+        if (nextId) {
+          workspaceApi.setActive(nextId).catch(() => { });
+        }
       }
     } catch (err: any) {
       const message = err?.message || 'Failed to delete workspace';
