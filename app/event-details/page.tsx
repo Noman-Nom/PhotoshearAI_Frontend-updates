@@ -41,7 +41,8 @@ import {
     User as UserIcon,
     UserX,
     Maximize2,
-    Move
+    Move,
+    Camera
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
@@ -49,14 +50,16 @@ import { Input } from '../../components/ui/Input';
 import { cn } from '../../utils/cn';
 import { Sidebar } from '../../components/shared/Sidebar';
 import { useEvents } from '../../contexts/EventsContext';
-import { collectionsApi, mediaApi } from '../../services/eventsApi';
+import { collectionsApi, mediaApi, facesApi, PersonResponse } from '../../services/eventsApi';
 import { SHARED_EVENTS, SharedEvent, SharedCollection, SharedMediaItem, saveEventsToStorage } from '../../constants';
 import { formatBytes } from '../../utils/formatters';
 import { downloadMediaWithBranding } from '../../utils/imageProcessor';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 
 import { brandingApi } from '../../services/brandingApi';
-import { uploadEventMedia } from '../../utils/api';
+import { uploadEventMedia, uploadAsset } from '../../utils/api';
+import eventsApi from '../../services/eventsApi';
 
 // Helper to match slug to title
 const createSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -72,6 +75,7 @@ const EventDetailsPage: React.FC = () => {
     const { slug, collectionSlug } = useParams<{ slug: string; collectionSlug?: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { success, error: toastError } = useToast();
     const { events, publishEvent, unpublishEvent } = useEvents();
     const [event, setEvent] = useState<SharedEvent | null>(null);
     const [activeCollectionId, setActiveCollectionId] = useState<string>('');
@@ -131,17 +135,41 @@ const EventDetailsPage: React.FC = () => {
 
     // Upload Logic
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+    const [personGroups, setPersonGroups] = useState<PersonResponse[]>([]);
+    const [selectedPersonPhotos, setSelectedPersonPhotos] = useState<SharedMediaItem[]>([]);
 
-    // Computed Values
     const activeCollection = event?.collections.find(c => c.id === activeCollectionId);
     const targetCollection = event?.collections.find(c => c.id === targetCollectionId);
 
-    useEffect(() => {
-        if (!slug) return;
-        const apiEvent = events.find(e => createSlug(e.title) === slug);
+    const coverInputRef = useRef<HTMLInputElement>(null);
+    const [isUpdatingCover, setIsUpdatingCover] = useState(false);
 
-        if (apiEvent) {
-            const mappedCollections: SharedCollection[] = apiEvent.collections.map(c => ({
+    // Computed totals from collections (more reliable than event.totalXXX if those are stale)
+    const effectiveTotalPhotos = useMemo(() => {
+        if (!event) return 0;
+        const fromCollections = event.collections.reduce((sum, col) => sum + col.photoCount, 0);
+        return Math.max(event.totalPhotos, fromCollections);
+    }, [event]);
+
+    const effectiveTotalVideos = useMemo(() => {
+        if (!event) return 0;
+        const fromCollections = event.collections.reduce((sum, col) => sum + col.videoCount, 0);
+        return Math.max(event.totalVideos, fromCollections);
+    }, [event]);
+
+    const fetchEventData = async () => {
+        if (!slug) return;
+
+        const apiEvent = events.find(e => createSlug(e.title) === slug);
+        if (!apiEvent) return;
+
+        try {
+            // Fetch full event details to get latest counts and cover
+            const fullEvent = await eventsApi.getById(apiEvent.id);
+
+            const mappedCollections: SharedCollection[] = fullEvent.collections.map(c => ({
                 id: c.id,
                 title: c.title,
                 photoCount: c.photo_count,
@@ -152,19 +180,21 @@ const EventDetailsPage: React.FC = () => {
             }));
 
             const mappedEvent: SharedEvent = {
-                id: apiEvent.id,
-                workspaceId: apiEvent.workspace_id,
-                title: apiEvent.title,
-                date: apiEvent.event_date,
-                status: apiEvent.status === 'published' ? 'Published' : 'Draft',
-                coverUrl: apiEvent.cover_url || '',
-                totalPhotos: apiEvent.total_photos,
-                totalVideos: apiEvent.total_videos,
-                totalSizeBytes: apiEvent.total_size_bytes,
+                id: fullEvent.id,
+                workspaceId: fullEvent.workspace_id,
+                title: fullEvent.title,
+                date: fullEvent.event_date,
+                status: fullEvent.status === 'published' ? 'Published' : 'Draft',
+                coverUrl: fullEvent.cover_url || '',
+                totalPhotos: fullEvent.total_photos,
+                totalVideos: fullEvent.total_videos,
+                totalSizeBytes: fullEvent.total_size_bytes,
                 collections: mappedCollections,
-                collaborators: apiEvent.collaborators.map(c => c.team_member_id),
-                description: apiEvent.description || '',
-                type: apiEvent.event_type || 'conference'
+                collaborators: fullEvent.collaborators.map(c => c.team_member_id),
+                description: fullEvent.description || '',
+                type: fullEvent.event_type || 'conference',
+                branding: fullEvent.branding_enabled,
+                brandingId: fullEvent.branding_id || undefined
             };
 
             setEvent(mappedEvent);
@@ -186,7 +216,13 @@ const EventDetailsPage: React.FC = () => {
             } else {
                 setActiveCollectionId('');
             }
+        } catch (err) {
+            console.error("Failed to fetch full event", err);
         }
+    };
+
+    useEffect(() => {
+        fetchEventData();
     }, [slug, events, collectionSlug, navigate]);
 
     // Fetch Media Items for Active Collection
@@ -206,9 +242,11 @@ const EventDetailsPage: React.FC = () => {
                                     id: m.id,
                                     type: m.media_type,
                                     url: m.url,
+                                    thumbnailUrl: m.thumbnail_url,
                                     name: m.filename,
                                     sizeBytes: m.size_bytes,
-                                    dateAdded: m.created_at
+                                    dateAdded: m.created_at,
+                                    processing_status: m.processing_status as any
                                 }))
                             };
                         }
@@ -223,14 +261,100 @@ const EventDetailsPage: React.FC = () => {
         fetchMedia();
     }, [activeCollectionId]);
 
-    // Simulate AI Face Analysis when switching to face mode
+    // Poll for media processing status
     useEffect(() => {
-        if (viewMode === 'face' && activeCollection?.items.length && activeCollection.items.length > 0) {
+        if (!activeCollectionId || !event) return;
+
+        const processingItems = activeCollection?.items.filter(
+            item => item.processing_status === 'pending' || item.processing_status === 'processing'
+        ) || [];
+
+        if (processingItems.length === 0) return;
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await mediaApi.list(activeCollectionId, { pageSize: 100 });
+
+                // Check if any status changed
+                const anyChanged = response.items.some(m => {
+                    const localItem = activeCollection?.items.find(i => i.id === m.id);
+                    return localItem && localItem.processing_status !== m.processing_status;
+                });
+
+                if (anyChanged) {
+                    setEvent(prev => {
+                        if (!prev) return null;
+                        const newCollections = prev.collections.map(c => {
+                            if (c.id === activeCollectionId) {
+                                return {
+                                    ...c,
+                                    items: response.items.map(m => ({
+                                        id: m.id,
+                                        type: m.media_type,
+                                        url: m.url,
+                                        thumbnailUrl: m.thumbnail_url,
+                                        name: m.filename,
+                                        sizeBytes: m.size_bytes,
+                                        dateAdded: m.created_at,
+                                        processing_status: m.processing_status as any
+                                    }))
+                                };
+                            }
+                            return c;
+                        });
+                        return { ...prev, collections: newCollections };
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to poll media status", e);
+            }
+        }, 5000); // Poll every 5 seconds
+
+        return () => clearInterval(pollInterval);
+    }, [activeCollectionId, activeCollection?.items.length, !!event]);
+
+    // Fetch Real Face Analysis when switching to face mode
+    useEffect(() => {
+        if (viewMode === 'face' && event?.id) {
             setIsAnalyzing(true);
-            const timer = setTimeout(() => setIsAnalyzing(false), 1500);
-            return () => clearTimeout(timer);
+            const fetchPersons = async () => {
+                try {
+                    const response = await facesApi.listPersons(event.id);
+                    setPersonGroups(response.items);
+                } catch (e) {
+                    console.error("Failed to fetch persons", e);
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
+            fetchPersons();
         }
-    }, [viewMode, activeCollectionId]);
+    }, [viewMode, event?.id, activeCollectionId]);
+
+    // Fetch Photos for Selected Person
+    useEffect(() => {
+        if (selectedPersonId && event?.id) {
+            const fetchPhotos = async () => {
+                try {
+                    const response = await facesApi.getPersonPhotos(event.id, selectedPersonId);
+                    setSelectedPersonPhotos(response.items.map(m => ({
+                        id: m.media_id || m.face_id,
+                        type: m.media_type,
+                        url: m.media_url,
+                        thumbnailUrl: m.thumbnail_url || m.media_url,
+                        name: m.filename,
+                        sizeBytes: m.size_bytes,
+                        dateAdded: m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Unknown'
+                    })));
+                } catch (e) {
+                    console.error("Failed to fetch person photos", e);
+                }
+            };
+            fetchPhotos();
+        } else {
+            setSelectedPersonPhotos([]);
+        }
+    }, [selectedPersonId, event?.id]);
 
     // Load Branding Configuration
     useEffect(() => {
@@ -239,7 +363,7 @@ const EventDetailsPage: React.FC = () => {
                 try {
                     // Try fetching from API
                     const brand = await brandingApi.getById(event.brandingId);
-                    if (brand && brand.status === 'Active') {
+                    if (brand && brand.status === 'active') {
                         setActiveBranding(brand);
                     } else {
                         setActiveBranding(null);
@@ -325,28 +449,20 @@ const EventDetailsPage: React.FC = () => {
         return items;
     };
 
-    // --- FACE GROUPING LOGIC (Simulated) ---
+    // --- FACE GROUPING LOGIC ---
     const faceGroups = useMemo(() => {
-        if (!activeCollection || activeCollection.items.length === 0) return [];
+        if (personGroups.length > 0) {
+            return personGroups.map(p => ({
+                id: p.id,
+                name: p.name || `Person #${p.id.slice(0, 4)}`,
+                thumbnailUrl: p.thumbnail_url || '',
+                items: Array(p.media_count).fill({}) as SharedMediaItem[] // Placeholder array for count, real items fetchable via getPersonPhotos
+            }));
+        }
 
-        const items = activeCollection.items;
-        const groups: Record<string, SharedMediaItem[]> = {};
-
-        // For simulation, we'll assign items to 3-5 hypothetical persons
-        // using a simple modulo on the index or hash of the ID
-        items.forEach((item, index) => {
-            const faceId = (index % 5).toString(); // Deterministic assignment for simulation
-            if (!groups[faceId]) groups[faceId] = [];
-            groups[faceId].push(item);
-        });
-
-        return Object.entries(groups).map(([id, groupItems]) => ({
-            id,
-            name: `Person #${parseInt(id) + 1}`,
-            thumbnailUrl: groupItems[0].url, // Use first item as representative
-            items: groupItems
-        }));
-    }, [activeCollection]);
+        // Fallback for empty state
+        return [];
+    }, [personGroups]);
 
     const selectedPerson = useMemo(() => {
         return faceGroups.find(g => g.id === selectedPersonId) || null;
@@ -364,32 +480,28 @@ const EventDetailsPage: React.FC = () => {
             items: []
         };
 
-        // Optimistic update - add to local state immediately
+        // Optimistic update
         setEvent(prev => {
             if (!prev) return null;
             return { ...prev, collections: [...prev.collections, newCollection] };
         });
 
-        // Also update SHARED_EVENTS for backwards compatibility
         const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
         if (dbEventIndex !== -1) {
             SHARED_EVENTS[dbEventIndex].collections.push(newCollection);
             saveEventsToStorage();
         }
 
+        const originalName = newCollectionName.trim();
         setNewCollectionName('');
         setIsAddCollectionModalOpen(false);
 
-        const cSlug = createSlug(newCollection.title);
-        navigate(`/events/${slug}/${cSlug}`);
-
-        // Call API
         try {
             const apiCollection = await collectionsApi.create(event.id, {
-                title: newCollectionName.trim(),
+                title: originalName,
             });
 
-            // Replace temp ID with real ID
+            // Replace temp ID
             setEvent(prev => {
                 if (!prev) return null;
                 return {
@@ -400,7 +512,6 @@ const EventDetailsPage: React.FC = () => {
                 };
             });
 
-            // Update SHARED_EVENTS with real ID
             if (dbEventIndex !== -1) {
                 const colIndex = SHARED_EVENTS[dbEventIndex].collections.findIndex(c => c.id === tempId);
                 if (colIndex !== -1) {
@@ -408,9 +519,14 @@ const EventDetailsPage: React.FC = () => {
                     saveEventsToStorage();
                 }
             }
+
+            success('Collection created');
+            const cSlug = createSlug(apiCollection.title);
+            navigate(`/events/${slug}/${cSlug}`);
         } catch (error) {
             console.error('Failed to create collection:', error);
-            // Revert on failure
+            toastError('Failed to create collection');
+            // Revert
             setEvent(prev => {
                 if (!prev) return null;
                 return { ...prev, collections: prev.collections.filter(c => c.id !== tempId) };
@@ -551,8 +667,10 @@ const EventDetailsPage: React.FC = () => {
         // Call API
         try {
             await collectionsApi.delete(event.id, deletedCollectionId);
+            success('Collection deleted successfully');
         } catch (error) {
             console.error('Failed to delete collection:', error);
+            toastError('Failed to delete collection from server');
             // Revert on failure
             setEvent(prev => {
                 if (!prev) return null;
@@ -592,6 +710,7 @@ const EventDetailsPage: React.FC = () => {
             }
         } catch (error) {
             console.error('Failed to publish event:', error);
+            // useEvents already handles toast for its own actions
         }
     };
 
@@ -614,6 +733,36 @@ const EventDetailsPage: React.FC = () => {
             setIsUnpublishModalOpen(false);
         } catch (error) {
             console.error('Failed to unpublish event:', error);
+            // useEvents already handles toast
+        }
+    };
+
+    const handleCoverClick = () => {
+        coverInputRef.current?.click();
+    };
+
+    const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !event) return;
+
+        setIsUpdatingCover(true);
+        try {
+            const result = await uploadAsset({
+                filename: file.name,
+                content_type: file.type,
+                asset_type: 'generic',
+                event_id: event.id
+            }, file);
+
+            await eventsApi.update(event.id, { cover_url: result.asset_url });
+            setEvent(prev => prev ? ({ ...prev, coverUrl: result.asset_url }) : null);
+            success('Event cover updated');
+        } catch (err) {
+            console.error("Failed to update cover", err);
+            toastError('Failed to update event cover');
+        } finally {
+            setIsUpdatingCover(false);
+            if (coverInputRef.current) coverInputRef.current.value = '';
         }
     };
 
@@ -621,76 +770,97 @@ const EventDetailsPage: React.FC = () => {
         if (!files || files.length === 0 || !event || !activeCollectionId) return;
 
         const newFiles = Array.from(files);
-        const uploadedItems: SharedMediaItem[] = [];
+        setIsUploading(true);
+        setUploadProgress({ current: 0, total: newFiles.length });
+
         let batchPhotos = 0;
         let batchVideos = 0;
         let batchSize = 0;
+        let successCount = 0;
+        const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
 
-        await Promise.all(newFiles.map(async (file) => {
+        // Process one by one for better UI feedback (progress and intermediate updates)
+        for (const file of newFiles) {
             try {
                 const isVideo = file.type.startsWith('video');
                 const result = await uploadEventMedia(event.id, activeCollectionId, file);
 
-                uploadedItems.push({
-                    id: result.media_id, // Use real ID from API
+                // Trigger face recognition processing
+                // We don't await this to keep UI responsive, just fire and forget (with logging)
+                mediaApi.confirmUpload(result.media_id, event.id).catch(err =>
+                    console.error("Failed to trigger face processing", err)
+                );
+
+                const newItem: SharedMediaItem = {
+                    id: result.media_id,
                     type: isVideo ? 'video' : 'photo',
                     url: result.media_url,
+                    thumbnailUrl: result.thumbnail_url || result.media_url,
                     name: file.name,
                     sizeBytes: file.size,
-                    dateAdded: new Date().toLocaleDateString()
+                    dateAdded: new Date().toLocaleDateString(),
+                    processing_status: 'pending'
+                };
+
+                const currentBatchPhotos = isVideo ? 0 : 1;
+                const currentBatchVideos = isVideo ? 1 : 0;
+                const currentBatchSize = file.size;
+
+                // Update UI immediately for each item
+                setEvent(prev => {
+                    if (!prev) return null;
+                    return {
+                        ...prev,
+                        totalPhotos: prev.totalPhotos + currentBatchPhotos,
+                        totalVideos: prev.totalVideos + currentBatchVideos,
+                        totalSizeBytes: prev.totalSizeBytes + currentBatchSize,
+                        collections: prev.collections.map(c => {
+                            if (c.id === activeCollectionId) {
+                                return {
+                                    ...c,
+                                    items: [newItem, ...c.items],
+                                    photoCount: c.photoCount + currentBatchPhotos,
+                                    videoCount: c.videoCount + currentBatchVideos,
+                                    thumbnailUrl: (!c.thumbnailUrl && !isVideo) ? newItem.url : c.thumbnailUrl
+                                };
+                            }
+                            return c;
+                        })
+                    };
                 });
 
-                if (isVideo) batchVideos++;
-                else batchPhotos++;
-                batchSize += file.size;
+                batchPhotos += currentBatchPhotos;
+                batchVideos += currentBatchVideos;
+                batchSize += currentBatchSize;
+                successCount++;
+                setUploadProgress(prev => ({ ...prev, current: successCount }));
+
+                // Sync with SHARED_EVENTS for consistency with other parts of the app
+                if (dbEventIndex !== -1) {
+                    const ev = SHARED_EVENTS[dbEventIndex];
+                    ev.totalPhotos += currentBatchPhotos;
+                    ev.totalVideos += currentBatchVideos;
+                    ev.totalSizeBytes += currentBatchSize;
+
+                    const col = ev.collections.find(c => c.id === activeCollectionId);
+                    if (col) {
+                        col.items = [newItem, ...col.items];
+                        col.photoCount += currentBatchPhotos;
+                        col.videoCount += currentBatchVideos;
+                    }
+                }
 
             } catch (error) {
                 console.error("Failed to upload", file.name, error);
-                // Optionally show toast error here
+                toastError(`Failed to upload ${file.name}`);
             }
-        }));
+        }
 
-        if (uploadedItems.length === 0) return;
-
-        setEvent(prev => {
-            if (!prev) return null;
-            const currentCollection = prev.collections.find(c => c.id === activeCollectionId);
-            if (!currentCollection) return prev;
-
-            const updatedItems = [...uploadedItems, ...currentCollection.items];
-
-            const newCollectionPhotoCount = currentCollection.photoCount + batchPhotos;
-            const newCollectionVideoCount = currentCollection.videoCount + batchVideos;
-
-            const newEventTotalPhotos = prev.totalPhotos + batchPhotos;
-            const newEventTotalVideos = prev.totalVideos + batchVideos;
-            const newEventTotalSize = prev.totalSizeBytes + batchSize;
-
-            let newThumbnailUrl = currentCollection.thumbnailUrl;
-            if (!newThumbnailUrl && uploadedItems.some(i => i.type === 'photo')) {
-                const firstPhoto = uploadedItems.find(i => i.type === 'photo');
-                if (firstPhoto) newThumbnailUrl = firstPhoto.url;
-            }
-
-            return {
-                ...prev,
-                totalPhotos: newEventTotalPhotos,
-                totalVideos: newEventTotalVideos,
-                totalSizeBytes: newEventTotalSize,
-                collections: prev.collections.map(c => {
-                    if (c.id === activeCollectionId) {
-                        return {
-                            ...c,
-                            items: updatedItems,
-                            photoCount: newCollectionPhotoCount,
-                            videoCount: newCollectionVideoCount,
-                            thumbnailUrl: newThumbnailUrl
-                        };
-                    }
-                    return c;
-                })
-            };
-        });
+        setIsUploading(false);
+        if (successCount > 0) {
+            saveEventsToStorage();
+            success(`Successfully uploaded ${successCount} ${successCount === 1 ? 'item' : 'items'}`);
+        }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -744,7 +914,7 @@ const EventDetailsPage: React.FC = () => {
         downloadMediaWithBranding(item, activeBranding);
     };
 
-    const handleHeaderDownload = () => {
+    const handleHeaderDownload = async () => {
         const currentCollection = event?.collections.find(c => c.id === activeCollectionId);
         if (!currentCollection) return;
 
@@ -752,15 +922,16 @@ const EventDetailsPage: React.FC = () => {
             ? currentCollection.items.filter(i => selectedMediaIds.has(i.id))
             : currentCollection.items;
 
-        if (itemsToDownload.length === 0) {
-            alert("No items to download.");
-            return;
-        }
+        if (itemsToDownload.length === 0) return;
 
+        success(`Preparing ${itemsToDownload.length} items for download...`);
+
+        // Process downloads sequentially with a small delay to prevent browser throttling
+        // All downloads now go through downloadMediaWithBranding which handles both branded and unbranded photos + videos
         itemsToDownload.forEach((item, index) => {
             setTimeout(() => {
-                downloadMediaWithBranding(item, activeBranding);
-            }, index * 500);
+                handleDownloadMedia(item);
+            }, index * 800);
         });
     };
 
@@ -774,9 +945,10 @@ const EventDetailsPage: React.FC = () => {
         navigate(`/events/${slug}/${cSlug}/view/${item.id}`);
     };
 
-    const handleDeleteMedia = () => {
+    const handleDeleteMedia = async () => {
         if (!mediaToDelete || !event || !activeCollectionId) return;
 
+        const originalEvent = JSON.parse(JSON.stringify(event));
         const itemSize = mediaToDelete.sizeBytes;
         const isVideo = mediaToDelete.type === 'video';
 
@@ -841,12 +1013,27 @@ const EventDetailsPage: React.FC = () => {
             });
         }
 
+        const deletedId = mediaToDelete.id;
         setMediaToDelete(null);
+
+        try {
+            await mediaApi.delete(deletedId);
+            success('Media deleted successfully');
+        } catch (error) {
+            console.error('Failed to delete media:', error);
+            toastError('Failed to delete media from server');
+            setEvent(originalEvent);
+            if (dbEventIndex !== -1) {
+                SHARED_EVENTS[dbEventIndex] = JSON.parse(JSON.stringify(originalEvent));
+                saveEventsToStorage();
+            }
+        }
     };
 
-    const handleBulkDelete = () => {
+    const handleBulkDelete = async () => {
         if (!event || !activeCollectionId || selectedMediaIds.size === 0) return;
 
+        const originalEvent = JSON.parse(JSON.stringify(event));
         const currentCollection = event.collections.find(c => c.id === activeCollectionId);
         if (!currentCollection) return;
 
@@ -910,32 +1097,54 @@ const EventDetailsPage: React.FC = () => {
             };
         });
 
+        const deletedIds = Array.from(selectedMediaIds) as string[];
         setSelectedMediaIds(new Set());
         setIsBulkDeleteModalOpen(false);
+
+        try {
+            await mediaApi.bulkDelete(event.id, deletedIds);
+            success(`${deletedIds.length} items deleted successfully`);
+        } catch (error) {
+            console.error('Failed bulk delete:', error);
+            toastError('Failed to delete items from server');
+            setEvent(originalEvent);
+            if (dbEventIndex !== -1) {
+                SHARED_EVENTS[dbEventIndex] = JSON.parse(JSON.stringify(originalEvent));
+                saveEventsToStorage();
+            }
+        }
     };
 
-    const handleMoveMedia = (targetId?: string) => {
+    const handleMoveMedia = async (targetId?: string) => {
         const destinationId = targetId || selectedDestinationId;
         if (!event || !activeCollectionId || !destinationId || destinationId === activeCollectionId || selectedMediaIds.size === 0) return;
 
+        const originalEvent = JSON.parse(JSON.stringify(event));
         const sourceCollection = event.collections.find(c => c.id === activeCollectionId);
         let targetCollection = event.collections.find(c => c.id === destinationId);
 
         // Support creating new collection if destinationId is 'NEW'
         if (destinationId === 'NEW') {
             const newTitle = newMoveCollectionName.trim() || 'New Collection';
-            const newCol: SharedCollection = {
-                id: `move_new_${Date.now()}`,
-                title: newTitle,
-                photoCount: 0,
-                videoCount: 0,
-                items: []
-            };
-            const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
-            if (dbEventIndex !== -1) {
-                SHARED_EVENTS[dbEventIndex].collections.push(newCol);
+            try {
+                const newColResponse = await collectionsApi.create(event.id, { title: newTitle });
+                const newCol: SharedCollection = {
+                    id: newColResponse.id,
+                    title: newColResponse.title,
+                    photoCount: 0,
+                    videoCount: 0,
+                    items: []
+                };
+                const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
+                if (dbEventIndex !== -1) {
+                    SHARED_EVENTS[dbEventIndex].collections.push(newCol);
+                }
+                targetCollection = newCol;
+            } catch (error) {
+                console.error('Failed to create move-to collection:', error);
+                toastError('Failed to create new collection');
+                return;
             }
-            targetCollection = newCol;
         }
 
         if (!sourceCollection || !targetCollection) return;
@@ -949,43 +1158,51 @@ const EventDetailsPage: React.FC = () => {
         const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
         if (dbEventIndex !== -1) {
             const ev = SHARED_EVENTS[dbEventIndex];
-
-            // Update Source Collection
             const srcCol = ev.collections.find(c => c.id === activeCollectionId);
             if (srcCol) {
                 srcCol.items = srcCol.items.filter(i => !selectedMediaIds.has(i.id));
                 srcCol.photoCount = Math.max(0, srcCol.photoCount - movedPhotos);
                 srcCol.videoCount = Math.max(0, srcCol.videoCount - movedVideos);
-
-                // Thumbnail adjustment
                 if (itemsToMove.some(i => i.url === srcCol.thumbnailUrl)) {
                     const nextPhoto = srcCol.items.find(i => i.type === 'photo');
                     srcCol.thumbnailUrl = nextPhoto ? nextPhoto.url : undefined;
                 }
             }
-
-            // Update Target Collection
             const tgtCol = ev.collections.find(c => c.id === targetCollection?.id);
             if (tgtCol) {
                 tgtCol.items = [...itemsToMove, ...tgtCol.items];
                 tgtCol.photoCount += movedPhotos;
                 tgtCol.videoCount += movedVideos;
-
-                // Set thumbnail if empty
                 if (!tgtCol.thumbnailUrl && itemsToMove.some(i => i.type === 'photo')) {
                     tgtCol.thumbnailUrl = itemsToMove.find(i => i.type === 'photo')?.url;
                 }
             }
-
             saveEventsToStorage();
             setEvent({ ...ev });
         }
+
+        const movedIds = Array.from(selectedMediaIds) as string[];
+        const sourceId = activeCollectionId;
+        const targetIdFinal = targetCollection.id;
 
         setSelectedMediaIds(new Set());
         setIsMoveModalOpen(false);
         setSelectedDestinationId(null);
         setIsCreatingInMove(false);
         setNewMoveCollectionName('');
+
+        try {
+            await collectionsApi.moveItems(event.id, sourceId, targetIdFinal, movedIds);
+            success(`${movedIds.length} items moved to ${targetCollection.title}`);
+        } catch (error) {
+            console.error('Failed to move items:', error);
+            toastError('Failed to move items on server');
+            setEvent(originalEvent);
+            if (dbEventIndex !== -1) {
+                SHARED_EVENTS[dbEventIndex] = JSON.parse(JSON.stringify(originalEvent));
+                saveEventsToStorage();
+            }
+        }
     };
 
     const moveModalDestinations = useMemo(() => {
@@ -1111,17 +1328,43 @@ const EventDetailsPage: React.FC = () => {
                         </div>
 
                         <div className="p-5 pb-0">
-                            <div className="aspect-video w-full rounded-lg overflow-hidden relative shadow-sm border border-slate-100 mb-4">
-                                <img src={event.coverUrl} className="w-full h-full object-cover" alt="Event Cover" />
+                            <input
+                                type="file"
+                                ref={coverInputRef}
+                                onChange={handleCoverChange}
+                                className="hidden"
+                                accept="image/*"
+                            />
+                            <div
+                                onClick={handleCoverClick}
+                                className="aspect-video w-full rounded-lg overflow-hidden relative shadow-sm border border-slate-100 mb-4 cursor-pointer group"
+                            >
+                                {event.coverUrl ? (
+                                    <img src={event.coverUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Event Cover" />
+                                ) : (
+                                    <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center text-slate-400">
+                                        <ImageIcon size={32} strokeWidth={1.5} />
+                                        <span className="text-[10px] font-bold mt-2 uppercase">No Cover Image</span>
+                                    </div>
+                                )}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-2">
+                                    <Camera size={20} />
+                                    <span className="text-[10px] font-black uppercase tracking-tighter">Change Cover</span>
+                                </div>
+                                {isUpdatingCover && (
+                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
+                                        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                )}
                             </div>
                             <div className="flex items-center justify-center gap-10 border-b border-slate-100 pb-5">
                                 <div className="flex flex-col items-center">
-                                    <span className="font-bold text-slate-900 text-lg leading-none">{event.totalPhotos}</span>
+                                    <span className="font-bold text-slate-900 text-lg leading-none">{effectiveTotalPhotos}</span>
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Photos</span>
                                 </div>
                                 <div className="w-px h-8 bg-slate-100" />
                                 <div className="flex flex-col items-center">
-                                    <span className="font-bold text-slate-900 text-lg leading-none">{event.totalVideos}</span>
+                                    <span className="font-bold text-slate-900 text-lg leading-none">{effectiveTotalVideos}</span>
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Videos</span>
                                 </div>
                             </div>
@@ -1273,6 +1516,30 @@ const EventDetailsPage: React.FC = () => {
                             </div>
                         </div>
 
+
+                        {/* Upload Progress Bar */}
+                        {isUploading && (
+                            <div className="px-6 py-3 bg-blue-50 border-b border-blue-100 animate-in fade-in slide-in-from-top-2">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+                                            Uploading {uploadProgress.current} of {uploadProgress.total} items...
+                                        </span>
+                                    </div>
+                                    <span className="text-xs font-black text-blue-600">
+                                        {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                                    </span>
+                                </div>
+                                <div className="w-full h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-blue-600 transition-all duration-300"
+                                        style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         {/* Media Content Area */}
                         <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 scrollbar-hide">
                             {viewMode === 'face' ? (
@@ -1355,11 +1622,15 @@ const EventDetailsPage: React.FC = () => {
                                                 onClick={() => handlePreview(item)}
                                             >
                                                 {item.type === 'photo' ? (
-                                                    <img src={item.url} alt={item.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                    <img src={item.thumbnailUrl || item.url} alt={item.name} className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105 bg-slate-50" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center bg-slate-800 relative">
                                                         <FileVideo size={32} className="text-slate-600 absolute" />
-                                                        {item.url && <video src={item.url} className="absolute inset-0 w-full h-full object-cover opacity-60" />}
+                                                        {item.thumbnailUrl ? (
+                                                            <img src={item.thumbnailUrl} className="absolute inset-0 w-full h-full object-contain opacity-60 bg-slate-900" alt="" />
+                                                        ) : item.url ? (
+                                                            <video src={item.url} className="absolute inset-0 w-full h-full object-contain opacity-60 bg-slate-900" />
+                                                        ) : null}
                                                         <div className="absolute inset-0 flex items-center justify-center">
                                                             <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/50 shadow-sm"><Play size={16} className="text-white fill-white ml-0.5" /></div>
                                                         </div>
@@ -1377,8 +1648,19 @@ const EventDetailsPage: React.FC = () => {
                                                         {isSelected && <Check size={12} className="stroke-[3]" />}
                                                     </div>
                                                 </div>
-                                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10">
-                                                    <button onClick={(e) => confirmDeleteMedia(item, e)} className="p-1.5 bg-black/40 hover:bg-red-600 backdrop-blur-sm rounded-lg text-white transition-colors border border-white/20 shadow-sm" title="Delete"><Trash2 size={14} /></button>
+                                                <div className="absolute top-3 right-3 flex gap-2 z-10">
+                                                    {(item.processing_status === 'pending' || item.processing_status === 'processing') && (
+                                                        <div
+                                                            className="p-1.5 bg-blue-600/90 backdrop-blur-sm rounded-lg text-white border border-white/20 shadow-sm flex items-center gap-1.5 px-2 animate-pulse"
+                                                            title={item.processing_status === 'processing' ? "Analyzing faces..." : "Queued for processing"}
+                                                        >
+                                                            <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                            <span className="text-[9px] font-black uppercase tracking-tighter">Scanning</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                                        <button onClick={(e) => confirmDeleteMedia(item, e)} className="p-1.5 bg-black/40 hover:bg-red-600 backdrop-blur-sm rounded-lg text-white transition-colors border border-white/20 shadow-sm" title="Delete"><Trash2 size={14} /></button>
+                                                    </div>
                                                 </div>
                                                 <div className="absolute bottom-12 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10 w-max hidden sm:block">
                                                     <button onClick={(e) => handleDownloadMedia(item, e)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-900 rounded-md text-[10px] font-bold shadow-lg hover:bg-slate-100 transition-colors transform translate-y-2 group-hover:translate-y-0"><Download size={12} /> Download</button>
@@ -1538,7 +1820,7 @@ const EventDetailsPage: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-3">
                             <Button onClick={() => {
-                                const items = selectedPerson?.items || [];
+                                const items = selectedPersonPhotos || [];
                                 items.forEach((item, idx) => {
                                     setTimeout(() => downloadMediaWithBranding(item, activeBranding), idx * 300);
                                 });
@@ -1550,22 +1832,29 @@ const EventDetailsPage: React.FC = () => {
 
                     {/* Content Area - Filtered Media Grid */}
                     <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {selectedPerson?.items.map((item) => (
-                                <div
-                                    key={item.id}
-                                    className="group relative aspect-square rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 hover:border-blue-500 transition-all"
-                                    onClick={() => handlePreview(item)}
-                                >
-                                    <img src={item.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
-                                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <div className="p-2 bg-white rounded-lg text-slate-900 shadow-xl">
-                                            <Maximize2 size={16} />
+                        {selectedPersonPhotos.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                                <p className="text-xs font-bold uppercase tracking-widest leading-loose text-center">Loading matching photos...</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                {selectedPersonPhotos.map((item) => (
+                                    <div
+                                        key={item.id}
+                                        className="group relative aspect-square rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 hover:border-blue-500 transition-all"
+                                        onClick={() => handlePreview(item)}
+                                    >
+                                        <img src={item.url} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500 bg-slate-50" alt="" />
+                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <div className="p-2 bg-white rounded-lg text-slate-900 shadow-xl">
+                                                <Maximize2 size={16} />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </Modal>
