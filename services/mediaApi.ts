@@ -1,4 +1,5 @@
-import { api } from '../utils/api';
+import { api, getAuthToken } from '../utils/api';
+import { getApiBaseUrl } from '../utils/subdomain';
 
 export interface MediaItemResponse {
     id: string;
@@ -49,6 +50,13 @@ export const mediaApi = {
     },
 
     /**
+     * Confirm media upload and trigger face processing
+     */
+    async confirmUpload(mediaId: string, eventId: string): Promise<{ job_id: string; status: string }> {
+        return api.post(`/api/v1/media/upload/confirm`, { media_id: mediaId, event_id: eventId }, true);
+    },
+
+    /**
      * List media items in a collection
      */
     async list(
@@ -83,4 +91,6 @@ export const mediaApi = {
     async bulkDelete(eventId: string, mediaItemIds: string[]): Promise<{ deleted_count: number }> {
         return api.post(`/api/v1/events/${eventId}/media/bulk-delete`, { media_item_ids: mediaItemIds }, true);
     },
+
 };
+
