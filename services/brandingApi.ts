@@ -21,7 +21,7 @@ export interface BrandingItem {
     contactNumber?: string;
     aboutUs?: string;
     domain?: string;
-    status: 'active' | 'draft';
+    status: 'active' | 'draft' | 'inactive';
     iconType: string;
     logo?: string; // Frontend uses 'logo' or 'logoUrl'
     logoUrl?: string;
@@ -56,7 +56,7 @@ export interface BrandingCreateRequest {
     brandOpacity?: number;
     brandSize?: number;
     iconType?: string;
-    status?: 'active' | 'draft';
+    status?: 'active' | 'draft' | 'inactive';
 }
 
 export interface BrandingUpdateRequest extends Partial<BrandingCreateRequest> { }

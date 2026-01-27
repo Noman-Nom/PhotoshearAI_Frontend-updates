@@ -77,6 +77,14 @@ const AppRoutes = () => {
       <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
       <Route path="/email-simulation" element={<EmailSimulationPage />} />
 
+      <Route path="/guest-access/:eventId" element={<GuestAccessPage />} />
+      <Route path="/guest-gallery/:eventId" element={<GuestGalleryPage />} />
+      <Route path="/guest-gallery/:eventId/view/:mediaId" element={<MediaViewPage viewContext="guest" />} />
+
+      <Route path="/client-access/:eventId" element={<ClientAccessPage />} />
+      <Route path="/client-gallery/:eventId" element={<ClientGalleryPage />} />
+      <Route path="/client-gallery/:eventId/view/:mediaId" element={<MediaViewPage viewContext="client" />} />
+
       <Route element={<ProtectedRoute />}>
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
@@ -98,13 +106,7 @@ const AppRoutes = () => {
 
         <Route path="/share-event/:eventId" element={<ShareEventPage />} />
 
-        <Route path="/guest-access/:eventId" element={<GuestAccessPage />} />
-        <Route path="/guest-gallery/:eventId" element={<GuestGalleryPage />} />
-        <Route path="/guest-gallery/:eventId/view/:mediaId" element={<MediaViewPage viewContext="guest" />} />
-
-        <Route path="/client-access/:eventId" element={<ClientAccessPage />} />
-        <Route path="/client-gallery/:eventId" element={<ClientGalleryPage />} />
-        <Route path="/client-gallery/:eventId/view/:mediaId" element={<MediaViewPage viewContext="client" />} />
+        <Route path="/share-event/:eventId" element={<ShareEventPage />} />
 
         <Route path="/team" element={<TeamPage />} />
         <Route path="/branding" element={<BrandingPage />} />
@@ -120,9 +122,9 @@ const AppRoutes = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <LanguageProvider>
-        <ToastProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <LanguageProvider>
           <TeamProvider>
             <WorkspaceProvider>
               <BillingProvider>
@@ -138,9 +140,9 @@ const App: React.FC = () => {
               </BillingProvider>
             </WorkspaceProvider>
           </TeamProvider>
-        </ToastProvider>
-      </LanguageProvider>
-    </AuthProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 };
 

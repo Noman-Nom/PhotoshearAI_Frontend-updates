@@ -45,11 +45,17 @@ import { Modal } from '../../components/ui/Modal';
 import { Switch } from '../../components/ui/Switch';
 import { Select } from '../../components/ui/Select';
 import { SubscriptionPlan, BillingHistoryItem, PaymentMethod } from '../../types';
-import { SHARED_EVENTS, COUNTRIES } from '../../constants';
+import { COUNTRIES } from '../../constants';
+import { useEvents } from '../../contexts/EventsContext';
 import { formatBytes } from '../../utils/formatters';
 import { api } from '../../utils/api';
 import { mapUserFromApi } from '../../utils/mappers';
 import { showToast } from '../../utils/toast';
+import { ProfileTab } from './components/ProfileTab';
+import { SecurityTab } from './components/SecurityTab';
+import { PaymentTab } from './components/PaymentTab';
+import { PlansTab } from './components/PlansTab';
+import { BillingHistoryTab } from './components/BillingHistoryTab';
 
 type SettingsTab = 'profile' | 'security' | 'payment' | 'plans' | 'billing';
 type PasswordStep = 'UPDATE_FORM' | 'FORGOT_OTP' | 'FORGOT_RESET' | 'SUCCESS';
@@ -214,14 +220,16 @@ const SettingsPage: React.FC = () => {
     }
   }, [activeTab, isOwner, fetchPaymentMethods, fetchPlans, fetchSubscription, fetchBillingHistory]);
 
+  const { events } = useEvents();
+
   const globalStorageStats = useMemo(() => {
-    const totalSizeBytes = SHARED_EVENTS.reduce((acc, event) => acc + (event.totalSizeBytes || 0), 0);
+    const totalSizeBytes = events.reduce((acc, event) => acc + (event.total_size_bytes || 0), 0);
     const limit = 1024 * 1024 * 1024; // 1 GB
     return {
       percentage: Math.min(100, Math.round((totalSizeBytes / limit) * 100)),
       formatted: formatBytes(totalSizeBytes)
     };
-  }, []);
+  }, [events]);
 
   const handleSaveProfile = async () => {
     setEmailError('');
@@ -684,330 +692,51 @@ const SettingsPage: React.FC = () => {
               <div className="max-w-4xl mx-auto">
 
                 {activeTab === 'profile' && (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-                      <div className="text-start">
-                        <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Personal Information</h2>
-                        <p className="text-xs text-slate-400 font-bold uppercase mt-1">Manage your identity and credentials</p>
-                      </div>
-                      <Button onClick={handleSaveProfile} className="bg-blue-600 hover:bg-blue-700 h-12 px-10 text-xs uppercase tracking-[0.15em] font-black rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all">Save Changes</Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
-                      <Input label="First Name" value={profileForm.firstName} onChange={e => setProfileForm({ ...profileForm, firstName: e.target.value })} className="bg-white rounded-xl h-12 font-bold" />
-                      <Input label="Last Name" value={profileForm.lastName} onChange={e => setProfileForm({ ...profileForm, lastName: e.target.value })} className="bg-white rounded-xl h-12 font-bold" />
-                      <div className="space-y-1">
-                        <Input label="Email Address" value={profileForm.email} onChange={e => setProfileForm({ ...profileForm, email: e.target.value })} className="bg-white rounded-xl h-12 font-bold" />
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter italic">Updating email triggers a verification OTP code.</p>
-                      </div>
-                      <Input label="Phone Number" value={profileForm.phone} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })} className="bg-white rounded-xl h-12 font-bold" />
-                      <div className="md:col-span-2">
-                        <Input label="Company Name" value={profileForm.companyName} onChange={e => setProfileForm({ ...profileForm, companyName: e.target.value })} className="bg-white rounded-xl h-12 font-bold" />
-                      </div>
-                    </div>
-                  </div>
+                  <ProfileTab
+                    profileForm={profileForm}
+                    setProfileForm={setProfileForm}
+                    onSave={handleSaveProfile}
+                  />
                 )}
 
                 {activeTab === 'security' && (
-                  <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500 text-start">
-                    <section>
-                      <div className="border-b border-slate-200 pb-6 mb-10">
-                        <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Account Security</h2>
-                        <p className="text-xs text-slate-400 font-bold uppercase mt-1">Multi-layer protection for your platform data</p>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-8">
-                        <Card className="p-8 bg-white border-slate-100 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-8 hover:shadow-xl transition-all border-none shadow-sm">
-                          <div className="flex items-center gap-6 flex-1 min-w-0">
-                            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 flex-shrink-0 shadow-inner">
-                              <Lock size={26} />
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Password Management</h4>
-                              <p className="text-xs text-slate-500 mt-1 truncate font-medium">Update your login credentials or recover access via OTP.</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 w-full sm:w-auto">
-                            <button
-                              onClick={openPasswordModal}
-                              className="px-10 h-12 text-[11px] font-black uppercase tracking-[0.2em] text-white bg-[#0F172A] rounded-2xl hover:bg-slate-800 transition-all shadow-xl active:scale-95"
-                            >
-                              Update Password
-                            </button>
-                          </div>
-                        </Card>
-
-                        {isOauthUser && (
-                          <Card className="p-8 bg-white border-slate-100 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-8 hover:shadow-xl transition-all border-none shadow-sm">
-                            <div className="flex items-center gap-6 flex-1 min-w-0">
-                              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 flex-shrink-0 shadow-inner">
-                                <KeyRound size={26} />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Set Password</h4>
-                                <p className="text-xs text-slate-500 mt-1 truncate font-medium">Add a password for email login alongside Google sign-in.</p>
-                              </div>
-                            </div>
-                            <div className="flex gap-2 w-full sm:w-auto">
-                              <button
-                                onClick={() => navigate('/set-password')}
-                                className="px-10 h-12 text-[11px] font-black uppercase tracking-[0.2em] text-white bg-[#0F172A] rounded-2xl hover:bg-slate-800 transition-all shadow-xl active:scale-95"
-                              >
-                                Set Password
-                              </button>
-                            </div>
-                          </Card>
-                        )}
-
-                        <Card className="p-8 bg-white border-slate-100 rounded-[2rem] hover:shadow-xl transition-all border-none shadow-sm">
-                          <div className="flex flex-col sm:flex-row items-center justify-between gap-8 mb-10">
-                            <div className="flex items-center gap-6 flex-1 min-w-0">
-                              <div className="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 flex-shrink-0 shadow-inner">
-                                <ShieldCheck size={26} />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Multi-Factor Auth</h4>
-                                <p className="text-xs text-slate-500 mt-1 font-medium">Add an extra verification layer to your login process.</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-5 bg-slate-50 px-6 py-4 rounded-3xl border border-slate-100 shadow-inner">
-                              <div className="text-right">
-                                <span className={cn(
-                                  "text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full border block mb-1",
-                                  user?.mfaEnabled ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-200 text-slate-500 border-slate-300"
-                                )}>
-                                  {user?.mfaEnabled ? 'Shield Active' : 'MFA Disabled'}
-                                </span>
-                              </div>
-                              <Switch
-                                checked={user?.mfaEnabled || false}
-                                onCheckedChange={handleMfaToggle}
-                              />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <MFAMethod active={user?.mfaEnabled && user?.mfaMethod === 'Email'} icon={<Mail size={18} />} label="Email Protocol" />
-                            <MFAMethod active={user?.mfaEnabled && user?.mfaMethod === 'Authenticator'} icon={<Smartphone size={18} />} label="App Auth" />
-                            <MFAMethod active={user?.mfaEnabled && user?.mfaMethod === 'SMS'} icon={<Clock size={18} />} label="SMS Logic" />
-                          </div>
-                        </Card>
-                      </div>
-                    </section>
-
-                    {/* Delete Account Section - Only for Members (Non-Owners) */}
-                    {!isOwner && (
-                      <section className="mt-12">
-                        <div className="border-b border-red-200 pb-6 mb-10">
-                          <h2 className="text-2xl font-black text-red-600 uppercase tracking-tight">Danger Zone</h2>
-                          <p className="text-xs text-red-400 font-bold uppercase mt-1">Irreversible actions for your account</p>
-                        </div>
-
-                        <Card className="p-8 bg-red-50/50 border-red-200 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-8 hover:shadow-xl transition-all shadow-sm">
-                          <div className="flex items-center gap-6 flex-1 min-w-0">
-                            <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center border border-red-200 flex-shrink-0 shadow-inner">
-                              <Trash2 size={26} />
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="text-base font-black text-red-700 uppercase tracking-tight">Delete Account</h4>
-                              <p className="text-xs text-red-500 mt-1 font-medium">Permanently delete your account and all associated data. This action cannot be undone.</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 w-full sm:w-auto">
-                            <button
-                              onClick={() => {
-                                setDeleteConfirmText('');
-                                setDeleteAccountError('');
-                                setIsDeleteAccountModalOpen(true);
-                              }}
-                              className="px-10 h-12 text-[11px] font-black uppercase tracking-[0.2em] text-white bg-red-600 rounded-2xl hover:bg-red-700 transition-all shadow-xl active:scale-95"
-                            >
-                              Delete Account
-                            </button>
-                          </div>
-                        </Card>
-                      </section>
-                    )}
-                  </div>
+                  <SecurityTab
+                    user={user}
+                    isOauthUser={isOauthUser}
+                    isOwner={isOwner}
+                    onUpdatePassword={openPasswordModal}
+                    onMfaToggle={handleMfaToggle}
+                    onDeleteAccount={() => {
+                      setDeleteConfirmText('');
+                      setDeleteAccountError('');
+                      setIsDeleteAccountModalOpen(true);
+                    }}
+                  />
                 )}
 
                 {activeTab === 'payment' && isOwner && (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500 text-start">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-                      <div>
-                        <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Payment Details</h2>
-                        <p className="text-xs text-slate-400 font-bold uppercase mt-1">Manage your authorized credit and debit cards</p>
-                      </div>
-                      <Button
-                        onClick={() => setIsAddCardModalOpen(true)}
-                        className="bg-[#0F172A] hover:bg-slate-800 text-white h-12 px-8 text-xs uppercase tracking-widest font-black rounded-xl shadow-lg transition-all"
-                      >
-                        <Plus size={18} className="mr-2" /> Add Card
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {paymentMethods.length === 0 ? (
-                        <Card className="col-span-full py-20 text-center border-dashed border-2 border-slate-100">
-                          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-slate-300">
-                            <CreditCard size={32} />
-                          </div>
-                          <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">No payment methods added</p>
-                        </Card>
-                      ) : (
-                        paymentMethods.map(pm => (
-                          <Card key={pm.id} className="p-6 bg-white border-slate-100 rounded-3xl group relative overflow-hidden shadow-sm hover:shadow-xl transition-all border-none">
-                            <div className="flex justify-between items-start mb-8 relative z-10">
-                              <div className={cn(
-                                "w-12 h-12 rounded-xl flex items-center justify-center shadow-sm",
-                                pm.brand === 'Visa' ? "bg-blue-50 text-blue-600" :
-                                  pm.brand === 'Mastercard' ? "bg-orange-50 text-orange-600" :
-                                    "bg-slate-50 text-slate-600"
-                              )}>
-                                <CreditCard size={24} />
-                              </div>
-                              <div className="flex gap-2">
-                                {pm.isDefault && (
-                                  <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[8px] font-black uppercase rounded-lg border border-blue-100 tracking-widest">Default</span>
-                                )}
-                                <button
-                                  onClick={() => handleDeletePaymentMethod(pm.id)}
-                                  disabled={isBillingLoading}
-                                  className="p-2 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                            <div className="relative z-10">
-                              <div className="text-xl font-black text-slate-900 tracking-[0.25em] mb-1 font-mono">
-                                •••• •••• •••• {pm.last4}
-                              </div>
-                              <div className="flex justify-between items-end">
-                                <div className="text-start">
-                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cardholder</p>
-                                  <p className="text-[11px] font-bold text-slate-900 uppercase truncate max-w-[200px]">{pm.cardholderName}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Expiry</p>
-                                  <p className="text-[11px] font-bold text-slate-900">{pm.expiryDate}</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50/50 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="p-6 bg-blue-50 rounded-[2rem] border border-blue-100 flex items-start gap-4">
-                      <LockKeyhole size={20} className="text-blue-600 mt-1 flex-shrink-0" />
-                      <div className="text-start">
-                        <h4 className="text-sm font-black text-blue-900 uppercase tracking-tight">Enterprise Security Standards</h4>
-                        <p className="text-xs text-blue-700/80 font-medium leading-relaxed mt-1 uppercase tracking-tight">
-                          Card data is encrypted at the storage level. We adhere to strict PCI-DSS guidelines to ensure your financial credentials remain vault-protected and restricted to account owners.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <PaymentTab
+                    paymentMethods={paymentMethods}
+                    isBillingLoading={isBillingLoading}
+                    onAddCard={() => setIsAddCardModalOpen(true)}
+                    onDeleteCard={handleDeletePaymentMethod}
+                  />
                 )}
 
                 {activeTab === 'plans' && isOwner && (
-                  <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500 text-start">
-                    <div className="border-b border-slate-200 pb-6 mb-10">
-                      <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Enterprise Infrastructure</h2>
-                      <p className="text-xs text-slate-400 font-bold uppercase mt-1">Current Tier: <strong>{subscription?.planName || plans.find(p => p.isCurrent)?.name || 'N/A'}</strong></p>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      {isBillingLoading && !plans.length ? (
-                        <div className="col-span-full text-center py-12">
-                          <p className="text-slate-400 font-bold">Loading plans...</p>
-                        </div>
-                      ) : plans.length === 0 ? (
-                        <div className="col-span-full text-center py-12">
-                          <p className="text-slate-400 font-bold">No plans available</p>
-                        </div>
-                      ) : (
-                        plans.map((plan) => (
-                          <Card key={plan.id} className={cn(
-                            "p-10 bg-white border-2 transition-all relative flex flex-col rounded-[2.5rem]",
-                            plan.isCurrent ? "border-slate-900 ring-8 ring-slate-900/5 shadow-2xl" : "border-slate-100 hover:border-slate-200 shadow-sm hover:shadow-xl",
-                            plan.isPopular && !plan.isCurrent && "border-blue-500"
-                          )}>
-                            {plan.isPopular && (
-                              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">POPULAR</div>
-                            )}
-                            <div className="mb-8">
-                              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{plan.name}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-5xl font-black text-slate-900 tracking-tighter">{plan.price}</span>
-                                <span className="text-xs font-bold text-slate-400 uppercase">/{plan.interval === 'monthly' ? 'mo' : 'yr'}</span>
-                              </div>
-                            </div>
-                            <div className="flex-1 space-y-5 mb-10">
-                              {plan.features.map((feature, idx) => (
-                                <div key={idx} className="flex items-start gap-4">
-                                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 border border-emerald-100 shadow-sm"><Check size={14} strokeWidth={4} /></div>
-                                  <span className="text-[13px] font-bold text-slate-600 leading-tight">{feature}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <button
-                              disabled={plan.isCurrent || isBillingLoading}
-                              onClick={() => !plan.isCurrent && handleUpgradeSubscription(plan.id)}
-                              className={cn("w-full h-14 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all", plan.isCurrent ? "bg-slate-100 text-slate-400 cursor-default shadow-inner" : "bg-[#0F172A] text-white hover:bg-slate-800 shadow-xl active:scale-95 disabled:opacity-50")}
-                            >
-                              {plan.isCurrent ? 'Active Hub' : 'Upgrade'}
-                            </button>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  <PlansTab
+                    plans={plans}
+                    planName={subscription?.planName || plans.find(p => p.isCurrent)?.name || 'N/A'}
+                    isBillingLoading={isBillingLoading}
+                    onUpgrade={handleUpgradeSubscription}
+                  />
                 )}
 
                 {activeTab === 'billing' && isOwner && (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500 text-start">
-                    <div className="border-b border-slate-200 pb-6 mb-10">
-                      <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Ledger & Billing</h2>
-                      <p className="text-xs text-slate-400 font-bold uppercase mt-1">Audit logs and financial records</p>
-                    </div>
-                    <div className="bg-white border border-slate-100 rounded-[3rem] overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                          <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
-                              <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Date</th>
-                              <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Amount</th>
-                              <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Method</th>
-                              <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Status</th>
-                              <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-50 font-mono">
-                            {isBillingLoading && !billingHistory.length ? (
-                              <tr>
-                                <td colSpan={5} className="px-10 py-12 text-center text-slate-400">Loading billing history...</td>
-                              </tr>
-                            ) : billingHistory.length === 0 ? (
-                              <tr>
-                                <td colSpan={5} className="px-10 py-12 text-center text-slate-400">No billing history yet</td>
-                              </tr>
-                            ) : (
-                              billingHistory.map((item) => (
-                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                                  <td className="px-10 py-6"><div className="text-[12px] font-black text-slate-900 uppercase tracking-tight">{new Date(item.date).toLocaleDateString()}</div><div className="text-[10px] text-slate-400 mt-1 uppercase opacity-60">{item.id}</div></td>
-                                  <td className="px-10 py-6"><div className="text-[12px] font-black text-slate-900 uppercase">{item.amount} {item.currency}</div></td>
-                                  <td className="px-10 py-6"><div className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">{item.method}</div></td>
-                                  <td className="px-10 py-6"><span className={cn("px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-[0.1em] border shadow-sm", item.status === 'Paid' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : item.status === 'Failed' ? "bg-red-50 text-red-600 border-red-100" : "bg-amber-50 text-amber-600 border-amber-100")}>{item.status}</span></td>
-                                  <td className="px-10 py-6 text-right"><button className="p-3 text-slate-300 hover:text-slate-900 hover:bg-white rounded-xl transition-all opacity-0 group-hover:opacity-100 shadow-sm border border-transparent hover:border-slate-100"><Download size={20} /></button></td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
+                  <BillingHistoryTab
+                    billingHistory={billingHistory}
+                    isBillingLoading={isBillingLoading}
+                  />
                 )}
               </div>
             </main>
@@ -1475,19 +1204,6 @@ const SettingsPage: React.FC = () => {
   );
 };
 
-const MFAMethod = ({ active, icon, label }: { active: boolean, icon: React.ReactNode, label: string }) => (
-  <div className={cn(
-    "flex items-center gap-4 p-5 rounded-2xl border-2 transition-all cursor-pointer group",
-    active ? "bg-slate-900 border-slate-900 text-white shadow-xl" : "bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200"
-  )}>
-    <div className={cn("p-3 rounded-xl flex-shrink-0 transition-colors shadow-sm", active ? "bg-white/10 text-white" : "bg-slate-100 text-slate-400 group-hover:text-slate-600")}>
-      {icon}
-    </div>
-    <div className="text-start min-w-0">
-      <p className={cn("text-[11px] font-black uppercase tracking-widest truncate", active ? "text-white" : "text-slate-900")}>{label}</p>
-      <p className={cn("text-[9px] font-bold uppercase mt-0.5", active ? "text-blue-300" : "text-slate-400")}>{active ? 'Primary Mode' : 'Configuration Required'}</p>
-    </div>
-  </div>
-);
+
 
 export default SettingsPage;

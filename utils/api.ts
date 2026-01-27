@@ -9,10 +9,22 @@ export const SESSION_EXPIRED_EVENT = 'fotoshare:session_expired';
 /**
  * Dispatch session expired event for global handling
  */
+// Rate limit session expired events to prevent toast spam
+let lastSessionExpired = 0;
+const SESSION_EXPIRED_COOLDOWN = 2000; // 2 seconds
+
+/**
+ * Dispatch session expired event for global handling
+ * Rate-limited to avoid spamming user with toasts
+ */
 export const dispatchSessionExpired = () => {
-  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, {
-    detail: { timestamp: Date.now() }
-  }));
+  const now = Date.now();
+  if (now - lastSessionExpired > SESSION_EXPIRED_COOLDOWN) {
+    lastSessionExpired = now;
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, {
+      detail: { timestamp: now }
+    }));
+  }
 };
 
 /**
@@ -136,7 +148,17 @@ export const api = {
       method: 'DELETE',
       headers: buildHeaders(false, includeAuth),
       credentials: 'include'
-    }).then(handleResponse)
+    }).then(handleResponse),
+  postBlob: (path: string, body?: any, includeAuth = true) =>
+    fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: buildHeaders(true, includeAuth),
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include'
+    }).then(async res => {
+      if (!res.ok) return handleResponse(res);
+      return res.blob();
+    })
 };
 
 
@@ -152,16 +174,25 @@ export const uploadAsset = async (request: {
     throw new ApiError('Invalid upload response', 500, createResp);
   }
 
-  // Upload to S3 - fire and forget, don't wait for or check response
-  // S3 presigned URLs handle the upload, and asset_url is already provided
-  fetch(createResp.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': request.content_type || file.type || 'application/octet-stream' },
-    body: file
-  }).catch(err => {
-    // Log but don't throw - upload may succeed despite CORS or response issues
-    console.warn('S3 upload request completed with warning:', err);
-  });
+  // Upload to S3 - wait for and check response
+  try {
+    const uploadRes = await fetch(createResp.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': request.content_type || file.type || 'application/octet-stream' },
+      body: file
+    });
+
+    if (!uploadRes.ok) {
+      console.error('S3 Upload Failed:', uploadRes.status, uploadRes.statusText);
+      throw new ApiError('Failed to upload file to storage', uploadRes.status);
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    console.warn('Storage upload encountered a network/CORS error, but the transfer may have completed:', err);
+    // If it's a network error (like CORS), we might still want to proceed if the user says "it works but shows failed"
+    // However, usually we should throw. To be safe with S3 CORS, we log it.
+    throw new ApiError('Network error during storage upload. Please check your connection.', 0);
+  }
 
   // Return asset_url without query parameters
   const cleanUrl = createResp.asset_url.split('?')[0];
@@ -190,11 +221,22 @@ export const uploadEventMedia = async (
   }
 
   // Upload to S3
-  await fetch(createResp.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': request.content_type },
-    body: file
-  });
+  try {
+    const uploadRes = await fetch(createResp.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': request.content_type },
+      body: file
+    });
+
+    if (!uploadRes.ok) {
+      console.error('S3 Media Upload Failed:', uploadRes.status, uploadRes.statusText);
+      throw new ApiError('Failed to upload media to storage', uploadRes.status);
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    console.warn('Media storage upload error (possibly CORS):', err);
+    throw new ApiError('Network error during media upload.', 0);
+  }
 
   // Clean URL similar to assets
   const cleanUrl = createResp.media_url?.split('?')[0] || createResp.media_url;

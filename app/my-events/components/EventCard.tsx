@@ -1,12 +1,12 @@
 
 import React from 'react';
-import { 
-  Calendar, 
-  Image as ImageIcon, 
-  Video, 
-  HardDrive, 
-  Share2, 
-  Trash2, 
+import {
+  Calendar,
+  Image as ImageIcon,
+  Video,
+  HardDrive,
+  Share2,
+  Trash2,
   UserPlus,
   Upload
 } from 'lucide-react';
@@ -53,24 +53,31 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onDelete, o
   };
 
   return (
-    <div 
+    <div
       onClick={handleViewClick}
       className="group bg-white rounded-[2rem] border border-slate-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col cursor-pointer shadow-sm aspect-square"
     >
       {/* Image Section */}
       <div className="relative flex-1 w-full overflow-hidden">
-        <img 
-          src={event.imageUrl} 
-          alt={event.title} 
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-        />
-        
+        {event.imageUrl ? (
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105 bg-slate-50"
+          />
+        ) : (
+          <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center text-slate-300">
+            <ImageIcon size={48} strokeWidth={1} />
+            <span className="text-[10px] font-bold mt-2 uppercase tracking-wide opacity-60">No Cover</span>
+          </div>
+        )}
+
         {/* Status Badge */}
         <div className={cn("absolute top-4 z-10", isRTL ? "right-4" : "left-4")}>
           <span className={cn(
             "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm",
-            isPublished 
-              ? "bg-[#10B981] text-white" 
+            isPublished
+              ? "bg-[#10B981] text-white"
               : "bg-amber-500 text-white"
           )}>
             {t(event.status.toLowerCase())}
@@ -79,7 +86,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onDelete, o
 
         {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-        
+
         {/* Text over Image */}
         <div className={cn("absolute bottom-5 left-5 right-5 text-white text-start", isRTL ? "text-right" : "text-left")}>
           <h3 className="text-lg font-bold leading-tight mb-1 truncate">{event.title}</h3>
@@ -93,69 +100,69 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onDelete, o
       {/* Metrics Row */}
       <div className={cn("px-4 py-3 border-b border-slate-50 flex items-center justify-between flex-shrink-0 bg-slate-50/30", isRTL && "flex-row-reverse")}>
         <div className={cn("flex -space-x-2 overflow-hidden", isRTL && "space-x-reverse")}>
-           {event.collaborators.slice(0, 3).map((url, i) => (
-             <img key={i} src={url} className="w-6 h-6 rounded-full border-2 border-white object-cover shadow-sm" alt="" />
-           ))}
-           {event.collaborators.length > 3 && (
-             <div className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-slate-500">+{event.collaborators.length - 3}</div>
-           )}
-           {event.collaborators.length === 0 && <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100" />}
+          {event.collaborators.slice(0, 3).map((url, i) => (
+            <img key={i} src={url} className="w-6 h-6 rounded-full border-2 border-white object-cover shadow-sm" alt="" />
+          ))}
+          {event.collaborators.length > 3 && (
+            <div className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-slate-500">+{event.collaborators.length - 3}</div>
+          )}
+          {event.collaborators.length === 0 && <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100" />}
         </div>
 
         <div className={cn("flex items-center gap-3 text-slate-400", isRTL && "flex-row-reverse")}>
-           <div className={cn("flex items-center gap-1", isRTL && "flex-row-reverse")}>
-              <ImageIcon size={14} className="text-slate-500/60" />
-              <span className="text-[10px] font-bold text-slate-600">{event.stats.photos}</span>
-           </div>
-           <div className={cn("flex items-center gap-1", isRTL && "flex-row-reverse")}>
-              <Video size={14} className="text-slate-500/60" />
-              <span className="text-[10px] font-bold text-slate-600">{event.stats.videos}</span>
-           </div>
-           <div className={cn("flex items-center gap-1", isRTL && "flex-row-reverse")}>
-              <HardDrive size={14} className="text-slate-500/60" />
-              <span className="text-[10px] font-bold text-slate-600">{event.stats.size}</span>
-           </div>
+          <div className={cn("flex items-center gap-1", isRTL && "flex-row-reverse")}>
+            <ImageIcon size={14} className="text-slate-500/60" />
+            <span className="text-[10px] font-bold text-slate-600">{event.stats.photos}</span>
+          </div>
+          <div className={cn("flex items-center gap-1", isRTL && "flex-row-reverse")}>
+            <Video size={14} className="text-slate-500/60" />
+            <span className="text-[10px] font-bold text-slate-600">{event.stats.videos}</span>
+          </div>
+          <div className={cn("flex items-center gap-1", isRTL && "flex-row-reverse")}>
+            <HardDrive size={14} className="text-slate-500/60" />
+            <span className="text-[10px] font-bold text-slate-600">{event.stats.size}</span>
+          </div>
         </div>
       </div>
 
       {/* Action Row - Optimized to prevent overlapping */}
       <div className={cn("px-3 py-3 flex items-center gap-1.5 flex-shrink-0", isRTL && "flex-row-reverse")}>
-        <button 
+        <button
           onClick={(e) => { e.stopPropagation(); handleViewClick(); }}
           className="flex-1 bg-[#0F172A] hover:bg-slate-800 text-white text-[10px] font-black py-2.5 rounded-xl transition-all shadow-sm active:scale-95 whitespace-nowrap"
         >
           {t('view_btn')}
         </button>
-        <button 
+        <button
           onClick={handleEditClick}
           className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[10px] font-black py-2.5 rounded-xl transition-all active:scale-95 whitespace-nowrap"
         >
           {t('edit_btn')}
         </button>
-        
+
         <div className={cn("flex items-center gap-0", isRTL && "flex-row-reverse")}>
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onAddCollaborator?.(event.id); }}
             className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors"
             title="Add Collaborator"
           >
             <UserPlus size={16} />
           </button>
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onUpload?.(event.id); }}
             className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors"
             title="Upload"
           >
             <Upload size={16} />
           </button>
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onShare?.(event.id); }}
             className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors"
             title="Share"
           >
             <Share2 size={16} />
           </button>
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onDelete?.(event.id); }}
             className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
             title="Delete Event"

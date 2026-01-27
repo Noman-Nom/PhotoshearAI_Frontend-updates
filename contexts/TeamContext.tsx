@@ -15,6 +15,7 @@ import {
   mapInvitationToFrontend,
   mapInvitationCreateToAPI,
 } from '../utils/teamMappers';
+import { useToast } from './ToastContext';
 
 interface TeamContextType {
   members: TeamMember[];
@@ -74,6 +75,7 @@ const DEFAULT_FALLBACK_ROLES: Role[] = [
 
 export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { success, error: toastError } = useToast();
 
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
@@ -211,9 +213,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedMember = await teamApi.update(id, apiData);
       const mappedMember = mapTeamMemberDetailToFrontend(updatedMember);
       setMembers(prev => prev.map(m => m.id === id ? mappedMember : m));
+      success('Member updated successfully');
     } catch (err: any) {
       console.error('Error updating member:', err);
       setError(err.message || 'Failed to update member');
+      toastError(err.message || 'Failed to update member');
       // Rollback optimistic update
       setMembers(previousMembers);
       throw err;
@@ -233,9 +237,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setError(null);
       await teamApi.delete(id);
+      success('Member deleted successfully');
     } catch (err: any) {
       console.error('Error deleting member:', err);
       setError(err.message || 'Failed to delete member');
+      toastError(err.message || 'Failed to delete member');
       // Rollback optimistic update
       setMembers(previousMembers);
       throw err;
@@ -260,9 +266,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const invitation = await invitationsApi.create(apiData);
       const mappedInvitation = mapInvitationToFrontend(invitation);
       setPendingMembers(prev => [mappedInvitation, ...prev]);
+      success('Invitation sent successfully');
     } catch (err: any) {
       console.error('Error inviting member:', err);
       setError(err.message || 'Failed to invite member');
+      toastError(err.message || 'Failed to invite member');
       throw err;
     }
   }, []);
@@ -279,9 +287,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
       await invitationsApi.cancel(id);
       setPendingMembers(prev => prev.filter(m => m.id !== id));
+      success('Invitation canceled');
     } catch (err: any) {
       console.error('Error canceling invitation:', err);
       setError(err.message || 'Failed to cancel invitation');
+      toastError(err.message || 'Failed to cancel invitation');
       throw err;
     }
   }, []);
@@ -291,9 +301,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setError(null);
       await invitationsApi.resend(id);
+      success('Invitation resent');
     } catch (err: any) {
       console.error('Error resending invitation:', err);
       setError(err.message || 'Failed to resend invitation');
+      toastError(err.message || 'Failed to resend invitation');
       throw err;
     }
   }, []);
@@ -347,9 +359,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newRole = await rolesApi.create(apiData);
       const mappedRole = mapRoleToFrontend(newRole);
       setRoles(prev => [...prev, mappedRole]);
+      success('Role created successfully');
     } catch (err: any) {
       console.error('Error creating role:', err);
       setError(err.message || 'Failed to create role');
+      toastError(err.message || 'Failed to create role');
       throw err;
     }
   }, []);
@@ -362,9 +376,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedRole = await rolesApi.update(id, apiData);
       const mappedRole = mapRoleToFrontend(updatedRole);
       setRoles(prev => prev.map(r => r.id === id ? mappedRole : r));
+      success('Role updated successfully');
     } catch (err: any) {
       console.error('Error updating role:', err);
       setError(err.message || 'Failed to update role');
+      toastError(err.message || 'Failed to update role');
       throw err;
     }
   }, []);
@@ -375,9 +391,11 @@ export const TeamProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
       await rolesApi.delete(id);
       setRoles(prev => prev.filter(r => r.id !== id));
+      success('Role deleted successfully');
     } catch (err: any) {
       console.error('Error deleting role:', err);
       setError(err.message || 'Failed to delete role');
+      toastError(err.message || 'Failed to delete role');
       throw err;
     }
   }, []);

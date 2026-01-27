@@ -4,6 +4,7 @@ import { Workspace } from '../constants';
 import { useAuth } from './AuthContext';
 import { workspaceApi, WorkspaceMemberResponse } from '../services/workspaceApi';
 import { mapWorkspaceListToWorkspace, mapWorkspaceCreateToApi, mapWorkspaceUpdateToApi } from '../utils/workspaceMappers';
+import { useToast } from './ToastContext';
 
 interface WorkspaceContextType {
   workspaces: Workspace[];
@@ -26,6 +27,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { success, error: toastError } = useToast();
   const [allWorkspaces, setAllWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
@@ -138,9 +140,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       // Refresh workspaces to get the new one
       await fetchWorkspaces();
+      success('Workspace created successfully');
     } catch (err: any) {
       const message = err?.message || 'Failed to create workspace';
       setError(message);
+      toastError(message);
       throw err;
     } finally {
       setLoading(false);
@@ -160,16 +164,18 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const apiData = mapWorkspaceUpdateToApi(data);
       await workspaceApi.update(id, apiData);
+      success('Workspace updated successfully');
     } catch (err: any) {
       const message = err?.message || 'Failed to update workspace';
       setError(message);
+      toastError(message);
       // Rollback optimistic update
       setAllWorkspaces(previousWorkspaces);
       throw err;
     } finally {
       stopMutating(id);
     }
-  }, [allWorkspaces, startMutating, stopMutating]);
+  }, [allWorkspaces, startMutating, stopMutating, success, toastError]);
 
   const deleteWorkspace = useCallback(async (id: string) => {
     startMutating(id);
@@ -192,16 +198,18 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           workspaceApi.setActive(nextId).catch(() => { });
         }
       }
+      success('Workspace deleted successfully');
     } catch (err: any) {
       const message = err?.message || 'Failed to delete workspace';
       setError(message);
+      toastError(message);
       // Rollback optimistic update
       setAllWorkspaces(previousWorkspaces);
       throw err;
     } finally {
       stopMutating(id);
     }
-  }, [activeWorkspaceId, allWorkspaces, startMutating, stopMutating]);
+  }, [activeWorkspaceId, allWorkspaces, startMutating, stopMutating, success, toastError]);
 
   const refreshWorkspaces = useCallback(async () => {
     return fetchWorkspaces();
@@ -212,9 +220,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await workspaceApi.addMember(workspaceId, { member_id: memberId, role_id: roleId || null });
       // Refresh workspaces to update member counts
       await fetchWorkspaces();
+      success('Member added successfully');
     } catch (err: any) {
       const message = err?.message || 'Failed to add member to workspace';
       setError(message);
+      toastError(message);
       throw err;
     }
   }, [fetchWorkspaces]);
@@ -224,9 +234,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await workspaceApi.removeMember(workspaceId, memberId);
       // Refresh workspaces to update member counts
       await fetchWorkspaces();
+      success('Member removed successfully');
     } catch (err: any) {
       const message = err?.message || 'Failed to remove member from workspace';
       setError(message);
+      toastError(message);
       throw err;
     }
   }, [fetchWorkspaces]);

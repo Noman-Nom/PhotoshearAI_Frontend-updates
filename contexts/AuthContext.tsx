@@ -11,6 +11,7 @@ import { setAuthToken, getAuthToken, SESSION_EXPIRED_EVENT } from '../utils/api'
 import { mapUserFromApi } from '../utils/mappers';
 import { getSubdomain, isOnMainDomain } from '../utils/subdomain';
 import * as authApi from '../services/authApi';
+import { useToast } from './ToastContext';
 
 
 // =============================================================================
@@ -136,6 +137,7 @@ function loadStoredResetEmail(): string | null {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(loadStoredUser);
+  const { success, error: toastError } = useToast();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
   const [pendingUserEmail, setPendingUserEmail] = useState<string | null>(() =>
     localStorage.getItem(STORAGE_KEYS.PENDING_EMAIL)
@@ -177,6 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user) {
         setSessionExpired(true);
         clearAllAuthState();
+        toastError('Your session has expired. Please log in again.');
       }
     };
 
@@ -220,11 +223,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Logged in successfully');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Invalid email or password');
       throw err;
     }
-  }, []);
+  }, [success, toastError]);
 
   const googleLogin = useCallback(async (token: string) => {
     setStatus(AuthStatus.LOADING);
@@ -244,12 +249,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING);
       }
       setStatus(AuthStatus.SUCCESS);
+      success('Logged in with Google');
       return { needsProfileCompletion: pending };
-    } catch (err) {
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Google sign-in failed');
       throw err;
     }
-  }, []);
+  }, [success, toastError]);
 
   const completeOAuthProfile = useCallback(async (data: CompleteProfileData) => {
     setStatus(AuthStatus.LOADING);
@@ -267,22 +274,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setNeedsProfileCompletion(false);
       localStorage.removeItem(STORAGE_KEYS.OAUTH_PROFILE_PENDING);
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Profile updated successfully');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Failed to update profile');
       throw err;
     }
-  }, []);
+  }, [success, toastError]);
 
   const setOauthPassword = useCallback(async (password: string) => {
     setStatus(AuthStatus.LOADING);
     try {
       await authApi.setPassword({ password });
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Password set successfully');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Failed to set password');
       throw err;
     }
-  }, []);
+  }, [success, toastError]);
 
   const register = useCallback(async (data: RegisterData) => {
     setStatus(AuthStatus.LOADING);
@@ -302,11 +313,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPendingUserEmail(data.email);
       localStorage.setItem(STORAGE_KEYS.PENDING_EMAIL, data.email);
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Registration successful! Please check your email for OTP.');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Registration failed');
       throw err;
     }
-  }, []);
+  }, [success, toastError]);
 
   const updateUserProfile = useCallback((data: Partial<User>) => {
     setUser(prev => {
@@ -335,16 +348,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPendingUserEmail(null);
       localStorage.removeItem(STORAGE_KEYS.PENDING_EMAIL);
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Email verified successfully');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Verification failed');
       throw err;
     }
-  }, [pendingUserEmail]);
+  }, [pendingUserEmail, success, toastError]);
 
   const resendOtp = useCallback(async () => {
     if (!pendingUserEmail) throw new Error('No active email for verification.');
-    await authApi.resendOtp({ email: pendingUserEmail });
-  }, [pendingUserEmail]);
+    try {
+      await authApi.resendOtp({ email: pendingUserEmail });
+      success('Verification code resent');
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to resend OTP');
+      throw err;
+    }
+  }, [pendingUserEmail, success, toastError]);
 
   // Forgot Password Logic
   const forgotPasswordSendOtp = useCallback(async (email: string) => {
@@ -355,11 +376,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setResetEmail(email);
       setResetStep('OTP');
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Reset code sent to your email');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Failed to send reset code');
       throw err;
     }
-  }, [setResetStep]);
+  }, [setResetStep, success, toastError]);
 
   const verifyResetOtp = useCallback(async (otp: string) => {
     setStatus(AuthStatus.LOADING);
@@ -374,11 +397,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       setResetStep('PASSWORD');
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('OTP verified');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'OTP verification failed');
       throw err;
     }
-  }, [setResetStep]);
+  }, [setResetStep, success, toastError]);
 
   const resetPassword = useCallback(async (newPassword: string) => {
     setStatus(AuthStatus.LOADING);
@@ -392,11 +417,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setResetEmail(null);
       setResetStepState('EMAIL');
       setStatus(AuthStatus.SUCCESS);
-    } catch (err) {
+      success('Password reset successfully');
+    } catch (err: any) {
       setStatus(AuthStatus.ERROR);
+      toastError(err?.message || 'Failed to reset password');
       throw err;
     }
-  }, []);
+  }, [success, toastError]);
 
   const logout = useCallback(async () => {
     // First, call backend to revoke the session

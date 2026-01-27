@@ -14,9 +14,11 @@ export interface SharedMediaItem {
     id: string;
     type: 'photo' | 'video';
     url: string;
+    thumbnailUrl?: string;
     name: string;
     sizeBytes: number;
     dateAdded?: string;
+    processing_status?: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
 export interface SharedCollection {

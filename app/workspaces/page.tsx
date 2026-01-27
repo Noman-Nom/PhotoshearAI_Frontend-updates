@@ -76,7 +76,7 @@ import { useEvents } from '../../contexts/EventsContext';
 import { formatBytes } from '../../utils/formatters';
 import { EMAIL_REGEX } from '../../utils/validators';
 import { GuestRecord, Role } from '../../types';
-import { showToast } from '../../utils/toast';
+import { useToast } from '../../contexts/ToastContext';
 
 type TabType = 'WorkSpaces' | 'Roles' | 'TeamMembers' | 'GuestData' | 'Calendar';
 
@@ -164,6 +164,7 @@ const WorkspacesPage: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { t, isRTL } = useTranslation();
+  const { success, error: toastError } = useToast();
   const { workspaces, setActiveWorkspaceById, deleteWorkspace } = useWorkspace();
   const { events: allEvents } = useEvents();
   const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember, createRole, updateRole, deleteRole, fetchRoles, fetchMembers, fetchInvitations } = useTeam();
@@ -388,13 +389,13 @@ const WorkspacesPage: React.FC = () => {
     const reservedNames = ['owner', 'super admin', 'superadmin', 'administrator', 'root'];
 
     if (reservedNames.includes(normalizedName)) {
-      showToast({ message: `The name "${trimmedName}" is reserved for system use.`, type: 'error' });
+      toastError(`The name "${trimmedName}" is reserved for system use.`);
       return;
     }
 
     const isDuplicate = roles.some(r => r.name.toLowerCase() === normalizedName && r.id !== editingRoleId);
     if (isDuplicate) {
-      showToast({ message: `A role with the name "${trimmedName}" already exists.`, type: 'error' });
+      toastError(`A role with the name "${trimmedName}" already exists.`);
       return;
     }
 
@@ -410,10 +411,8 @@ const WorkspacesPage: React.FC = () => {
 
       if (editingRoleId) {
         await updateRole(editingRoleId, roleData);
-        showToast({ message: `Role "${trimmedName}" updated successfully!`, type: 'success' });
       } else {
         await createRole(roleData);
-        showToast({ message: `Role "${trimmedName}" created successfully!`, type: 'success' });
       }
 
       // Refresh roles from API to get updated counts
@@ -427,7 +426,6 @@ const WorkspacesPage: React.FC = () => {
       setEditingRoleId(null);
     } catch (error: any) {
       console.error('Error saving role:', error);
-      showToast({ message: error.message || 'Failed to save role. Please try again.', type: 'error' });
     } finally {
       setIsSavingRole(false);
     }
@@ -480,7 +478,6 @@ const WorkspacesPage: React.FC = () => {
           accessLevel: isAllStudios ? 'Full Access' : 'Specific Event',
           workspaceIds: workspaceIds,
         });
-        showToast({ message: 'Member updated successfully!', type: 'success' });
         await fetchMembers();
       } else {
         // Create new invitation - send roleId and workspaceIds
@@ -493,7 +490,6 @@ const WorkspacesPage: React.FC = () => {
           workspaceIds: workspaceIds,
           message: inviteForm.message?.trim() || undefined,
         });
-        showToast({ message: 'Invitation sent successfully!', type: 'success' });
         await fetchInvitations();
         setMemberStatusFilter('Pending');
       }
@@ -503,7 +499,6 @@ const WorkspacesPage: React.FC = () => {
       setInviteForm({ firstName: '', lastName: '', email: '', roleId: '', selectedStudioIds: [] as string[], message: '' });
     } catch (error: any) {
       console.error('Error saving member:', error);
-      showToast({ message: error.message || 'Failed to save member. Please try again.', type: 'error' });
     }
   };
 
@@ -520,16 +515,13 @@ const WorkspacesPage: React.FC = () => {
         if (member.isOwner || member.role === 'Owner' || member.role === 'SuperAdmin / Owner') return;
         // Use workspaceIds (not allowedWorkspaceIds) to match API mapper
         await updateMember(memberId, { workspaceIds: currentWS.filter(id => id !== managingMembersWorkspace?.id) });
-        showToast({ message: `${member.firstName} ${member.lastName} removed from workspace!`, type: 'success' });
       } else {
         // Use workspaceIds (not allowedWorkspaceIds) to match API mapper
         await updateMember(memberId, { workspaceIds: [...currentWS, managingMembersWorkspace?.id] });
-        showToast({ message: `${member.firstName} ${member.lastName} added to workspace!`, type: 'success' });
       }
       await fetchMembers();
     } catch (error: any) {
       console.error('Error updating workspace access:', error);
-      showToast({ message: 'Failed to update workspace access. Please try again.', type: 'error' });
     }
   };
 
@@ -537,12 +529,10 @@ const WorkspacesPage: React.FC = () => {
     if (roleToDelete && !roleToDelete.isSystem && membersWithRoleToDelete.length === 0) {
       try {
         await deleteRole(roleToDelete.id);
-        showToast({ message: `Role "${roleToDelete.name}" deleted successfully!`, type: 'success' });
         await fetchRoles();
         setRoleToDelete(null);
       } catch (error: any) {
         console.error('Error deleting role:', error);
-        showToast({ message: error.message || 'Failed to delete role.', type: 'error' });
       }
     }
   };

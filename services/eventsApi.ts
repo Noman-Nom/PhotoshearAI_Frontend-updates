@@ -12,6 +12,7 @@ import { CollaboratorResponse } from './collaboratorsApi';
 // Re-export other services for backward compatibility
 export * from './collectionsApi';
 export * from './mediaApi';
+export * from './facesApi';
 export * from './commentsApi';
 export * from './collaboratorsApi';
 

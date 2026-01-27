@@ -7,6 +7,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { brandingApi, BrandingItem, BrandingCreateRequest, BrandingUpdateRequest } from '../services/brandingApi';
 import { useAuth } from './AuthContext';
+import { useToast } from './ToastContext';
 
 interface BrandingContextType {
     /** All branding items */
@@ -35,6 +36,7 @@ const BrandingContext = createContext<BrandingContextType | undefined>(undefined
 
 export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
+    const { success, error: toastError } = useToast();
     const [items, setItems] = useState<BrandingItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMutating, setIsMutating] = useState(false);
@@ -69,7 +71,7 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Active items only (for dropdowns/selection)
     const activeItems = useMemo(() => {
-        return items.filter(item => item.status === 'Active');
+        return items.filter(item => item.status && item.status.toLowerCase() === 'active');
     }, [items]);
 
     // Get item by ID
@@ -85,10 +87,12 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try {
             const newItem = await brandingApi.create(data);
             setItems(prev => [newItem, ...prev]);
+            success('Branding item created successfully');
             return newItem;
         } catch (err: any) {
             const message = err?.message || 'Failed to create branding item';
             setError(message);
+            toastError(message);
             throw err;
         } finally {
             setIsMutating(false);
@@ -114,11 +118,13 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setItems(prev => prev.map(item =>
                 item.id === id ? updatedItem : item
             ));
+            success('Branding item updated successfully');
         } catch (err: any) {
             // Rollback on error
             setItems(previousItems);
             const message = err?.message || 'Failed to update branding item';
             setError(message);
+            toastError(message);
             throw err;
         } finally {
             setIsMutating(false);
@@ -138,11 +144,13 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         try {
             await brandingApi.delete(id);
+            success('Branding item deleted successfully');
         } catch (err: any) {
             // Rollback on error
             setItems(previousItems);
             const message = err?.message || 'Failed to delete branding item';
             setError(message);
+            toastError(message);
             throw err;
         } finally {
             setIsMutating(false);

@@ -1,9 +1,9 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Sidebar } from '../../components/shared/Sidebar';
 import { CalendarView } from '../../components/shared/CalendarView';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
-import { SHARED_EVENTS } from '../../constants';
+import { useEvents } from '../../contexts/EventsContext';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Search, Bell, ChevronDown } from 'lucide-react';
@@ -11,10 +11,26 @@ import { cn } from '../../utils/cn';
 
 const StudioCalendarPage: React.FC = () => {
   const { activeWorkspace, workspaces } = useWorkspace();
+  const { events } = useEvents();
   const { user } = useAuth();
   const { t, isRTL } = useTranslation();
 
-  const studioEvents = SHARED_EVENTS.filter(e => e.workspaceId === activeWorkspace?.id);
+  // Transform API events to calendar format
+  const studioEvents = useMemo(() => {
+    return events.map(e => ({
+      id: e.id,
+      workspaceId: e.workspace_id,
+      title: e.title,
+      date: e.event_date,
+      status: e.status === 'published' ? 'Published' : 'Draft',
+      coverUrl: e.cover_url || '',
+      totalPhotos: e.total_photos,
+      totalVideos: e.total_videos,
+      totalSizeBytes: e.total_size_bytes,
+      collections: [],
+      collaborators: []
+    }));
+  }, [events]);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
@@ -49,9 +65,9 @@ const StudioCalendarPage: React.FC = () => {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col custom-scrollbar bg-slate-50/50">
-            <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col min-h-[700px] md:min-h-0">
-                <CalendarView events={studioEvents} workspaces={workspaces} isGlobal={false} />
-            </div>
+          <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col min-h-[700px] md:min-h-0">
+            <CalendarView events={studioEvents} workspaces={workspaces} isGlobal={false} />
+          </div>
         </main>
       </div>
     </div>

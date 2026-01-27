@@ -1,12 +1,12 @@
 
 import React from 'react';
-import { 
-  Calendar, 
-  Image as ImageIcon, 
-  Video, 
-  HardDrive, 
-  Settings, 
-  Share2, 
+import {
+  Calendar,
+  Image as ImageIcon,
+  Video,
+  HardDrive,
+  Settings,
+  Share2,
   Trash2,
   UserPlus,
   ChevronRight,
@@ -52,8 +52,8 @@ export const EventListItem: React.FC<EventListItemProps> = ({ event, onEdit, onD
   };
 
   const handleAddCollaborator = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onAddCollaborator?.(event.id);
+    e.stopPropagation();
+    onAddCollaborator?.(event.id);
   };
 
   const handleViewClick = () => {
@@ -63,17 +63,23 @@ export const EventListItem: React.FC<EventListItemProps> = ({ event, onEdit, onD
   };
 
   return (
-    <div 
+    <div
       onClick={handleViewClick}
       className={cn("bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex items-center gap-4 sm:gap-6 hover:border-slate-300 hover:shadow-sm transition-all duration-200 group cursor-pointer", isRTL && "flex-row-reverse")}
     >
       {/* Thumbnail */}
       <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-slate-100 relative shadow-inner">
-        <img 
-          src={event.imageUrl} 
-          alt={event.title} 
-          className="w-full h-full object-cover"
-        />
+        {event.imageUrl ? (
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-300">
+            <ImageIcon size={20} strokeWidth={1.5} />
+          </div>
+        )}
         <div className="absolute inset-0 bg-black/5" />
       </div>
 
@@ -91,8 +97,8 @@ export const EventListItem: React.FC<EventListItemProps> = ({ event, onEdit, onD
         <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">{t('status_header')}</span>
         <span className={cn(
           "px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wide border",
-          isPublished 
-            ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
+          isPublished
+            ? "bg-emerald-50 text-emerald-600 border-emerald-100"
             : "bg-amber-50 text-amber-600 border-amber-100"
         )}>
           {t(event.status.toLowerCase())}
@@ -101,76 +107,76 @@ export const EventListItem: React.FC<EventListItemProps> = ({ event, onEdit, onD
 
       {/* Collaborators (Hidden on tablet) */}
       <div className={cn("hidden lg:flex items-center -space-x-2 w-[120px] justify-center", isRTL && "space-x-reverse")}>
-         {event.collaborators.length > 0 ? (
-             event.collaborators.slice(0, 3).map((url, i) => (
-                <img key={i} src={url} className="w-8 h-8 rounded-full border-2 border-white ring-1 ring-slate-100 object-cover" alt="" />
-             ))
-         ) : (
-             <div className="w-8 h-8 rounded-full border-2 border-white ring-1 ring-slate-100 bg-slate-50 flex items-center justify-center text-[10px] text-slate-400">-</div>
-         )}
-         {event.collaborators.length > 3 && (
-            <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white ring-1 ring-slate-100 flex items-center justify-center text-[9px] font-bold text-slate-500">
+        {event.collaborators.length > 0 ? (
+          event.collaborators.slice(0, 3).map((url, i) => (
+            <img key={i} src={url} className="w-8 h-8 rounded-full border-2 border-white ring-1 ring-slate-100 object-cover" alt="" />
+          ))
+        ) : (
+          <div className="w-8 h-8 rounded-full border-2 border-white ring-1 ring-slate-100 bg-slate-50 flex items-center justify-center text-[10px] text-slate-400">-</div>
+        )}
+        {event.collaborators.length > 3 && (
+          <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white ring-1 ring-slate-100 flex items-center justify-center text-[9px] font-bold text-slate-500">
             +{event.collaborators.length - 3}
-            </div>
-         )}
+          </div>
+        )}
       </div>
 
       {/* Metrics (Hidden on smaller laptops) */}
       <div className={cn("hidden xl:flex items-center gap-6 px-6 border-l border-r border-slate-100 mx-2", isRTL && "flex-row-reverse")}>
-         <div className={cn("flex items-center gap-2 text-slate-600 min-w-[60px]", isRTL && "flex-row-reverse")}>
-            <div className="p-1.5 bg-slate-50 rounded text-slate-400 border border-slate-100"><ImageIcon size={13} strokeWidth={2.5} /></div>
-            <span className="text-xs font-bold text-slate-700">{event.stats.photos}</span>
-         </div>
-         <div className={cn("flex items-center gap-2 text-slate-600 min-w-[60px]", isRTL && "flex-row-reverse")}>
-            <div className="p-1.5 bg-slate-50 rounded text-slate-400 border border-slate-100"><Video size={13} strokeWidth={2.5} /></div>
-            <span className="text-xs font-bold text-slate-700">{event.stats.videos}</span>
-         </div>
-         <div className={cn("flex items-center gap-2 text-slate-600 min-w-[80px]", isRTL && "flex-row-reverse")}>
-            <div className="p-1.5 bg-slate-50 rounded text-slate-400 border border-slate-100"><HardDrive size={13} strokeWidth={2.5} /></div>
-            <span className="text-xs font-bold text-slate-700">{event.stats.size}</span>
-         </div>
+        <div className={cn("flex items-center gap-2 text-slate-600 min-w-[60px]", isRTL && "flex-row-reverse")}>
+          <div className="p-1.5 bg-slate-50 rounded text-slate-400 border border-slate-100"><ImageIcon size={13} strokeWidth={2.5} /></div>
+          <span className="text-xs font-bold text-slate-700">{event.stats.photos}</span>
+        </div>
+        <div className={cn("flex items-center gap-2 text-slate-600 min-w-[60px]", isRTL && "flex-row-reverse")}>
+          <div className="p-1.5 bg-slate-50 rounded text-slate-400 border border-slate-100"><Video size={13} strokeWidth={2.5} /></div>
+          <span className="text-xs font-bold text-slate-700">{event.stats.videos}</span>
+        </div>
+        <div className={cn("flex items-center gap-2 text-slate-600 min-w-[80px]", isRTL && "flex-row-reverse")}>
+          <div className="p-1.5 bg-slate-50 rounded text-slate-400 border border-slate-100"><HardDrive size={13} strokeWidth={2.5} /></div>
+          <span className="text-xs font-bold text-slate-700">{event.stats.size}</span>
+        </div>
       </div>
 
       {/* Actions */}
       <div className={cn("flex items-center gap-1 sm:gap-2 border-l border-slate-100 pl-4 sm:pl-6 md:border-none md:pl-0", isRTL && "flex-row-reverse border-l-0 border-r pr-4 sm:pr-6 md:pr-0")}>
         <div className={cn("hidden sm:flex items-center gap-1", isRTL ? "ml-2" : "mr-2")}>
-            <button onClick={handleAddCollaborator} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors" title="Add Collaborator">
-                <UserPlus size={16} />
-            </button>
-            <button 
-                onClick={handleUpload}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors" 
-                title="Upload"
-            >
-                <Upload size={16} />
-            </button>
-            <button 
-                onClick={handleShare}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors" 
-                title="Share"
-            >
-                <Share2 size={16} />
-            </button>
-            <button 
-                onClick={handleEdit}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                title="Settings"
-            >
-                <Settings size={16} />
-            </button>
-            <button 
-                onClick={handleDelete}
-                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Delete"
-            >
-                <Trash2 size={16} />
-            </button>
+          <button onClick={handleAddCollaborator} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors" title="Add Collaborator">
+            <UserPlus size={16} />
+          </button>
+          <button
+            onClick={handleUpload}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+            title="Upload"
+          >
+            <Upload size={16} />
+          </button>
+          <button
+            onClick={handleShare}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+            title="Share"
+          >
+            <Share2 size={16} />
+          </button>
+          <button
+            onClick={handleEdit}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+            title="Settings"
+          >
+            <Settings size={16} />
+          </button>
+          <button
+            onClick={handleDelete}
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Delete"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
 
         {/* Mobile menu substitute could go here, but focusing on View Button */}
-        <button 
-            onClick={(e) => { e.stopPropagation(); handleViewClick(); }}
-            className={cn("bg-[#0F172A] hover:bg-[#1E293B] text-white text-[11px] font-bold py-2.5 px-4 rounded-lg transition-colors shadow-sm flex items-center whitespace-nowrap", isRTL ? "mr-auto md:mr-2" : "ml-auto md:ml-2")}
+        <button
+          onClick={(e) => { e.stopPropagation(); handleViewClick(); }}
+          className={cn("bg-[#0F172A] hover:bg-[#1E293B] text-white text-[11px] font-bold py-2.5 px-4 rounded-lg transition-colors shadow-sm flex items-center whitespace-nowrap", isRTL ? "mr-auto md:mr-2" : "ml-auto md:ml-2")}
         >
           {t('view_btn')}
           <ChevronRight size={14} className={cn("opacity-80", isRTL ? "mr-1 rotate-180" : "ml-1")} />

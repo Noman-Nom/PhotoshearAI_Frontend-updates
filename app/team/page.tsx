@@ -42,13 +42,13 @@ import { TextArea } from '../../components/ui/TextArea';
 import { useTeam } from '../../contexts/TeamContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useEvents } from '../../contexts/EventsContext';
 import { useNavigate } from 'react-router-dom';
 import { TeamMember, PendingMember } from '../../types';
-import { SHARED_EVENTS } from '../../constants';
 import { useTranslation } from '../../contexts/LanguageContext';
-import { showToast } from '../../utils/toast';
 import { SkeletonMemberRow } from '../../components/ui/Skeleton';
 import { EMAIL_REGEX } from '../../utils/validators';
+import { useToast } from '../../contexts/ToastContext';
 
 const TeamPage: React.FC = () => {
   const navigate = useNavigate();
@@ -69,8 +69,10 @@ const TeamPage: React.FC = () => {
     fetchMembers,
     fetchInvitations
   } = useTeam();
+  const { success, error: toastError } = useToast();
 
   const { activeWorkspace, workspaces } = useWorkspace();
+  const { events } = useEvents();
 
   const [activeTab, setActiveTab] = useState<'Registered' | 'Pending'>('Registered');
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,14 +103,13 @@ const TeamPage: React.FC = () => {
 
   const studioMembers = useMemo(() => {
     if (!activeWorkspace) return [];
-    const wsEvents = SHARED_EVENTS.filter(e => e.workspaceId === activeWorkspace.id);
-    const wsEventIds = wsEvents.map(e => e.id);
+    const wsEventIds = events.map(e => e.id);
     return members.filter(m => {
       if (m.isOwner || m.role === 'Owner' || m.role === 'SuperAdmin / Owner') return true;
       if (m.allowedWorkspaceIds?.includes(activeWorkspace.id)) return true;
       return m.allowedEventIds?.some(id => wsEventIds.includes(id));
     });
-  }, [members, activeWorkspace]);
+  }, [members, activeWorkspace, events]);
 
   const studioPending = useMemo(() => {
     if (!activeWorkspace) return [];
@@ -137,13 +138,11 @@ const TeamPage: React.FC = () => {
         roleId: roleId,
         workspaceIds: Array.from(new Set([...(member.allowedWorkspaceIds || []), activeWorkspace.id]))
       });
-      showToast({ message: `${member.firstName} ${member.lastName} added to workspace!`, type: 'success' });
       // Refetch to update UI immediately
       await fetchMembers();
       setIsAddModalOpen(false);
     } catch (error) {
       console.error('Error adding member to workspace:', error);
-      showToast({ message: 'Failed to add member to workspace.', type: 'error' });
     }
   };
 
@@ -159,7 +158,6 @@ const TeamPage: React.FC = () => {
         workspaceIds: [activeWorkspace.id],
         message: inviteForm.message
       });
-      showToast({ message: 'Invitation sent successfully!', type: 'success' });
       // Refetch to update UI immediately
       await fetchInvitations();
       setIsAddModalOpen(false);
@@ -167,7 +165,6 @@ const TeamPage: React.FC = () => {
       setActiveTab('Pending');
     } catch (error) {
       console.error('Error sending invitation:', error);
-      showToast({ message: 'Failed to send invitation.', type: 'error' });
     }
   };
 
@@ -187,12 +184,10 @@ const TeamPage: React.FC = () => {
       if (activeTab === 'Registered') {
         // Send role_id to API
         await updateMember(selectedDetailMember.id, { roleId: roleEditValue });
-        showToast({ message: 'Role updated successfully!', type: 'success' });
         // Refetch to update UI immediately
         await fetchMembers();
       } else {
         updatePendingMember(selectedDetailMember.id, { role: roleEditValue });
-        showToast({ message: 'Pending member role updated!', type: 'success' });
         await fetchInvitations();
       }
       // Close modal after successful update
@@ -200,7 +195,7 @@ const TeamPage: React.FC = () => {
       setIsEditingRole(false);
     } catch (error: any) {
       console.error('Error updating role:', error);
-      showToast({ message: error.message || 'Failed to update role.', type: 'error' });
+      toastError(error.message || 'Failed to update role.');
     } finally {
       setIsUpdatingRole(false);
     }
@@ -234,7 +229,7 @@ const TeamPage: React.FC = () => {
       let currentWS = [...(m.allowedWorkspaceIds || [])].filter(id => id !== wsId);
 
       // Also remove event-level access for events inside this studio
-      const wsEventIds = SHARED_EVENTS.filter(e => e.workspaceId === wsId).map(e => e.id);
+      const wsEventIds = events.map(e => e.id);
       const nextEvents = (m.allowedEventIds || []).filter(id => !wsEventIds.includes(id));
 
       try {
@@ -246,10 +241,9 @@ const TeamPage: React.FC = () => {
           await updateMember(m.id, { workspaceIds: currentWS });
           await fetchMembers();
         }
-        showToast({ message: `${itemToDelete.name} removed from studio successfully!`, type: 'success' });
+        // success toast will be handled by context
       } catch (error) {
         console.error('Error updating member access:', error);
-        showToast({ message: 'Failed to remove member. Please try again.', type: 'error' });
         throw error;
       }
     };
@@ -274,7 +268,20 @@ const TeamPage: React.FC = () => {
     }
   };
 
-  const assignedEvents = selectedDetailMember ? (selectedDetailMember.accessLevel === 'Full Access' ? SHARED_EVENTS.filter(e => e.workspaceId === activeWorkspace?.id) : SHARED_EVENTS.filter(e => selectedDetailMember.allowedEventIds?.includes(e.id))) : [];
+  // Transform events for display
+  const transformedEvents = useMemo(() => {
+    return events.map(e => ({
+      id: e.id,
+      title: e.title,
+      coverUrl: e.cover_url || ''
+    }));
+  }, [events]);
+
+  const assignedEvents = selectedDetailMember ? (
+    selectedDetailMember.accessLevel === 'Full Access'
+      ? transformedEvents
+      : transformedEvents.filter(e => selectedDetailMember.allowedEventIds?.includes(e.id))
+  ) : [];
 
   return (
     <div className="flex h-screen bg-white font-sans overflow-hidden text-start">
@@ -368,7 +375,7 @@ const TeamPage: React.FC = () => {
                               </div>
                             ) : (
                               <div className={cn("flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 transition-all", isRTL ? "justify-start" : "justify-end")}>
-                                {!isRegistered && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); showToast({ message: 'Invitation resent successfully!', type: 'success' }); await fetchInvitations(); } catch (err) { showToast({ message: 'Failed to resend invitation. Please try again.', type: 'error' }); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16} /></button>)}
+                                {!isRegistered && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); success('Invitation resent successfully!'); await fetchInvitations(); } catch (err) { toastError('Failed to resend invitation. Please try again.'); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16} /></button>)}
                                 <button onClick={(e) => handleDelete(member, e)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Remove from Studio"><Trash2 size={16} /></button>
                               </div>
                             )}

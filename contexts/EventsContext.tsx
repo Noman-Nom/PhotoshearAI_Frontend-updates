@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { eventsApi, EventResponse, EventCreateInput, EventUpdateInput, EventListResponse } from '../services/eventsApi';
 import { useWorkspace } from './WorkspaceContext';
+import { useToast } from './ToastContext';
 
 // ============ Types ============
 
@@ -44,6 +45,7 @@ interface EventsProviderProps {
 
 export const EventsProvider: React.FC<EventsProviderProps> = ({ children }) => {
     const { activeWorkspace } = useWorkspace();
+    const { success, error: toastError } = useToast();
 
     // State
     const [events, setEvents] = useState<EventResponse[]>([]);
@@ -109,10 +111,12 @@ export const EventsProvider: React.FC<EventsProviderProps> = ({ children }) => {
             setEvents(prev => [newEvent, ...prev]);
             setTotalCount(prev => prev + 1);
 
+            success('Event created successfully');
             return newEvent;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to create event';
             setError(message);
+            toastError(message);
             throw err;
         } finally {
             setIsLoading(false);
@@ -130,10 +134,12 @@ export const EventsProvider: React.FC<EventsProviderProps> = ({ children }) => {
             // Optimistic update: replace in list
             setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
 
+            success('Event updated successfully');
             return updatedEvent;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to update event';
             setError(message);
+            toastError(message);
             throw err;
         } finally {
             setIsLoading(false);
@@ -151,9 +157,12 @@ export const EventsProvider: React.FC<EventsProviderProps> = ({ children }) => {
             // Optimistic update: remove from list
             setEvents(prev => prev.filter(e => e.id !== eventId));
             setTotalCount(prev => Math.max(0, prev - 1));
+
+            success('Event deleted successfully');
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to delete event';
             setError(message);
+            toastError(message);
             throw err;
         } finally {
             setIsLoading(false);
@@ -170,10 +179,12 @@ export const EventsProvider: React.FC<EventsProviderProps> = ({ children }) => {
             // Optimistic update
             setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
 
+            success('Event published successfully');
             return updatedEvent;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to publish event';
             setError(message);
+            toastError(message);
             throw err;
         }
     }, []);
@@ -188,10 +199,12 @@ export const EventsProvider: React.FC<EventsProviderProps> = ({ children }) => {
             // Optimistic update
             setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
 
+            success('Event unpublished successfully');
             return updatedEvent;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to unpublish event';
             setError(message);
+            toastError(message);
             throw err;
         }
     }, []);
