@@ -126,6 +126,37 @@ export const clientAccessApi = {
     async getGallery(token: string): Promise<ClientGalleryResponse> {
         return apiRequest<ClientGalleryResponse>(`/client/gallery?token=${encodeURIComponent(token)}`);
     },
+
+    /**
+     * Register anonymous guest for face search (no PIN/OTP required)
+     */
+    async registerGuest(eventId: string, name: string, email?: string): Promise<GuestRegisterResponse> {
+        const data: GuestRegisterRequest = {
+            event_id: eventId,
+            name,
+            email,
+        };
+        return apiRequest<GuestRegisterResponse>('/client/guest-register', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
 };
 
+// Guest registration types
+export interface GuestRegisterRequest {
+    event_id: string;
+    name: string;
+    email?: string;
+}
+
+export interface GuestRegisterResponse {
+    guest_token: string;
+    guest_id: string;
+    event_id: string;
+    event_title: string;
+    expires_at: string;
+}
+
 export default clientAccessApi;
+
