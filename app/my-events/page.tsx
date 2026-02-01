@@ -129,19 +129,19 @@ const MyEventsPage: React.FC = () => {
     <div className="flex h-screen bg-white overflow-hidden font-sans">
       <Sidebar />
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <header className="bg-white px-8 pt-8 pb-6 border-b border-slate-100">
-          <div className="flex justify-between items-start mb-6">
+        <header className="bg-white px-4 md:px-8 pt-6 md:pt-8 pb-4 md:pb-6 border-b border-slate-100">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4 md:mb-6">
             <div className="text-start">
-              <h1 className="text-xl font-bold text-slate-900">{t('my_events_title')}</h1>
-              <p className="text-sm text-slate-500">{t('my_events_subtitle')}</p>
+              <h1 className="text-lg md:text-xl font-bold text-slate-900">{t('my_events_title')}</h1>
+              <p className="text-xs md:text-sm text-slate-500">{t('my_events_subtitle')}</p>
             </div>
-            <Button onClick={() => navigate('/create-event')} className="bg-[#0F172A] text-white font-bold h-11 px-6 shadow-md hover:bg-slate-800">
-              <Plus className={isRTL ? "ml-2" : "mr-2"} size={20} strokeWidth={3} /> {t('add_new_event')}
+            <Button onClick={() => navigate('/create-event')} className="bg-[#0F172A] text-white font-bold h-10 md:h-11 px-4 md:px-6 shadow-md hover:bg-slate-800 text-sm w-full sm:w-auto">
+              <Plus className={isRTL ? "ml-2" : "mr-2"} size={18} strokeWidth={3} /> {t('add_new_event')}
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[300px] max-w-sm">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 md:gap-4">
+            <div className="relative flex-1 min-w-0 sm:min-w-[200px] md:min-w-[300px] max-w-sm">
               <Search className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", isRTL ? "right-3" : "left-3")} size={18} />
               <input
                 type="text"
@@ -152,13 +152,13 @@ const MyEventsPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center bg-slate-100 p-1 rounded-lg">
+            <div className="flex items-center bg-slate-100 p-1 rounded-lg overflow-x-auto">
               {(['All', 'Published', 'Draft'] as const).map(f => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   className={cn(
-                    "px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all",
+                    "px-3 md:px-4 py-1.5 text-[9px] md:text-[10px] font-black uppercase tracking-widest rounded-md transition-all whitespace-nowrap",
                     filter === f ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
                   )}
                 >
@@ -167,32 +167,34 @@ const MyEventsPage: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex-1" />
+            <div className="flex-1 hidden sm:block" />
 
-            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 uppercase tracking-wider">
-              <LayoutGrid size={16} className="text-slate-400" />
-              {t('sort_newest')}
-              <ChevronDown size={14} className="text-slate-400" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 md:px-4 py-2 border border-slate-200 rounded-lg text-[10px] md:text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 uppercase tracking-wider">
+                <LayoutGrid size={14} className="text-slate-400" />
+                <span className="hidden sm:inline">{t('sort_newest')}</span>
+                <ChevronDown size={14} className="text-slate-400" />
+              </button>
 
-            <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-              <button
-                onClick={() => setViewMode('Grid')}
-                className={cn("p-2 transition-colors", viewMode === 'Grid' ? "bg-slate-900 text-white" : "text-slate-400 hover:bg-slate-50")}
-              >
-                <Grid size={18} />
-              </button>
-              <button
-                onClick={() => setViewMode('List')}
-                className={cn("p-2 transition-colors", viewMode === 'List' ? "bg-slate-900 text-white" : "text-slate-400 hover:bg-slate-50")}
-              >
-                <List size={18} />
-              </button>
+              <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                <button
+                  onClick={() => setViewMode('Grid')}
+                  className={cn("p-2 transition-colors", viewMode === 'Grid' ? "bg-slate-900 text-white" : "text-slate-400 hover:bg-slate-50")}
+                >
+                  <Grid size={16} />
+                </button>
+                <button
+                  onClick={() => setViewMode('List')}
+                  className={cn("p-2 transition-colors", viewMode === 'List' ? "bg-slate-900 text-white" : "text-slate-400 hover:bg-slate-50")}
+                >
+                  <List size={16} />
+                </button>
+              </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-50/20">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/20 pb-24 md:pb-8">
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
               {[1, 2, 3, 4, 5, 6].map(i => (
