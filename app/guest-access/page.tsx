@@ -1,18 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Lock, Camera, ArrowLeft, ScanFace, Check, User, AlertCircle, Mail, Phone, ShieldCheck } from 'lucide-react';
-import { saveGuestToRegistry, addSimulatedEmail } from '../../constants';
+import { Camera, ArrowLeft, User, AlertCircle, Mail, ScanFace } from 'lucide-react';
+import { saveGuestToRegistry } from '../../constants';
 import { useEvents } from '../../contexts/EventsContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { cn } from '../../utils/cn';
-import { EMAIL_REGEX } from '../../utils/validators';
-import { GuestRecord } from '../../types';
 import { clientAccessApi } from '../../services/clientAccessApi';
 import { facesApi } from '../../services/facesApi';
 
-type Step = 'INFO' | 'VERIFY_EMAIL' | 'SCAN';
+type Step = 'INFO' | 'SCAN';
 
 const GuestAccessPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
@@ -22,18 +20,14 @@ const GuestAccessPage: React.FC = () => {
 
     // Event data state
     const [eventData, setEventData] = useState<{ id: string; title: string; workspaceId: string } | null>(null);
-    const [clientToken, setClientToken] = useState<string | null>(null);
+    const [guestToken, setGuestToken] = useState<string | null>(null);
 
-    // State
+    // State - Simplified: only name (required) and email (optional)
     const [step, setStep] = useState<Step>('INFO');
     const [formData, setFormData] = useState({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: ''
+        name: '',
+        email: ''
     });
-    const [pin, setPin] = useState(['', '', '', '']);
-    const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
@@ -44,10 +38,6 @@ const GuestAccessPage: React.FC = () => {
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [cameraError, setCameraError] = useState('');
     const [isCameraReady, setIsCameraReady] = useState(false);
-
-    // PIN/OTP Input Refs
-    const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-    const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
     useEffect(() => {
         return () => {
@@ -80,70 +70,10 @@ const GuestAccessPage: React.FC = () => {
         setError('');
     };
 
-    const handlePinChange = (index: number, value: string) => {
-        if (!/^\d*$/.test(value)) return;
-        if (value.length > 1) value = value.slice(-1);
-
-        const newPin = [...pin];
-        newPin[index] = value;
-        setPin(newPin);
-        setError('');
-
-        if (value && index < 3) {
-            inputRefs.current[index + 1]?.focus();
-        }
-    };
-
-    const handlePinKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Backspace' && !pin[index] && index > 0) {
-            inputRefs.current[index - 1]?.focus();
-        }
-        if (e.key === 'Enter' && pin.join('').length === 4) {
-            handleContinue();
-        }
-    };
-
-    const handleOtpChange = (index: number, value: string) => {
-        if (!/^\d*$/.test(value)) return;
-        if (value.length > 1) value = value.slice(-1);
-
-        const newOtp = [...otp];
-        newOtp[index] = value;
-        setOtp(newOtp);
-        setError('');
-
-        if (value && index < 5) {
-            otpRefs.current[index + 1]?.focus();
-        }
-    };
-
-    const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Backspace' && !otp[index] && index > 0) {
-            otpRefs.current[index - 1]?.focus();
-        }
-        if (e.key === 'Enter' && otp.join('').length === 6) {
-            handleOtpVerify();
-        }
-    };
-
     const handleContinue = async () => {
-        const enteredPin = pin.join('');
-
-        // Validation
-        if (!formData.firstName.trim()) {
-            setError('First Name is required');
-            return;
-        }
-        if (!formData.email.trim() || !EMAIL_REGEX.test(formData.email.trim())) {
-            setError('Please enter a valid email address.');
-            return;
-        }
-        if (!formData.phone.trim()) {
-            setError('Phone Number is required');
-            return;
-        }
-        if (enteredPin.length !== 4) {
-            setError('Please enter the 4-digit PIN');
+        // Validation - only name is required
+        if (!formData.name.trim()) {
+            setError('Name is required');
             return;
         }
 
@@ -152,62 +82,42 @@ const GuestAccessPage: React.FC = () => {
         setIsLoading(true);
 
         try {
-            await clientAccessApi.requestAccess(eventId, formData.email.trim(), enteredPin);
-            setStep('VERIFY_EMAIL');
-            setIsLoading(false);
+            // Register guest and get token (no PIN/OTP required)
+            const response = await clientAccessApi.registerGuest(
+                eventId,
+                formData.name.trim(),
+                formData.email.trim() || undefined
+            );
+
+            setGuestToken(response.guest_token);
+
+            // Save to guest registry
+            saveGuestToRegistry({
+                id: response.guest_id,
+                name: formData.name.trim(),
+                email: formData.email.trim() || '',
+                phone: '',
+                workspaceId: eventData?.workspaceId || 'unknown',
+                workspaceName: 'Studio',
+                eventId: eventId,
+                eventName: response.event_title || eventData?.title || 'Event',
+                accessDate: new Date().toLocaleDateString(),
+                downloadCount: 0
+            });
+
+            sessionStorage.setItem('fotoshare_guest_token', response.guest_token);
+
+            setStep('SCAN');
             setError('');
         } catch (err: any) {
-            console.error("Access request failed", err);
-            setError(err.message || 'Invalid PIN or Request Failed');
+            console.error("Guest registration failed", err);
+            setError(err.message || 'Registration failed. Please try again.');
+        } finally {
             setIsLoading(false);
         }
     };
 
-    const handleOtpVerify = async () => {
-        const enteredOtp = otp.join('');
-        if (enteredOtp.length !== 6 || !eventId) return;
-
-        setIsLoading(true);
-
-        try {
-            // Verify OTP and get token
-            const response = await clientAccessApi.verifyOtp(eventId, formData.email.trim(), enteredOtp);
-
-            if (response.success && response.token) {
-                setClientToken(response.token);
-                // Persist for Guest Registry/Gallery
-                saveGuestToRegistry({
-                    id: response.token, // Use token or sessionId as ID
-                    name: `${formData.firstName} ${formData.lastName}`.trim(),
-                    email: formData.email.trim(),
-                    phone: formData.phone.trim(),
-                    workspaceId: eventData?.workspaceId || 'unknown',
-                    workspaceName: 'Unknown Studio',
-                    eventId: eventId,
-                    eventName: eventData?.title || 'Unknown Event',
-                    accessDate: new Date().toLocaleDateString(),
-                    downloadCount: 0
-                });
-                sessionStorage.setItem('photmo_guest_token', response.token);
-                sessionStorage.setItem('photmo_guest_session_id', response.token);
-
-                setStep('SCAN');
-                setIsLoading(false);
-                setError('');
-            } else {
-                throw new Error('Verification failed');
-            }
-        } catch (err: any) {
-            console.error("OTP verification failed", err);
-            setError(err.message || 'Incorrect verification code.');
-            setIsLoading(false);
-            setOtp(['', '', '', '', '', '']);
-            otpRefs.current[0]?.focus();
-        }
-    };
-
-    const isFormValid = formData.firstName.trim() && EMAIL_REGEX.test(formData.email.trim()) && formData.phone.trim() && pin.join('').length === 4;
-    const isOtpComplete = otp.join('').length === 6;
+    const isFormValid = formData.name.trim().length > 0;
 
     const startCamera = async () => {
         try {
@@ -232,7 +142,7 @@ const GuestAccessPage: React.FC = () => {
     };
 
     const captureAndSearch = async () => {
-        if (!videoRef.current || !eventId || !clientToken) return;
+        if (!videoRef.current || !eventId || !guestToken) return;
 
         setIsScanning(true);
         setScanStatus('Scanning Face...');
@@ -249,14 +159,14 @@ const GuestAccessPage: React.FC = () => {
 
             // 2. Create Search Job
             setScanStatus('Processing Biometrics...');
-            const uploadInfo = await facesApi.createSearch(eventId, clientToken);
+            const uploadInfo = await facesApi.createSearch(eventId, guestToken);
 
-            // 3. Upload Image
+            // 3. Upload Image to presigned URL
             await facesApi.uploadImage(uploadInfo.upload_url, blob);
 
             // 4. Start Search
             setScanStatus('Searching Gallery...');
-            const startInfo = await facesApi.startSearch(uploadInfo.job_id, clientToken);
+            await facesApi.startSearch(uploadInfo.job_id, guestToken);
 
             // 5. Poll for Results
             let attempts = 0;
@@ -265,7 +175,7 @@ const GuestAccessPage: React.FC = () => {
             const pollInterval = setInterval(async () => {
                 try {
                     attempts++;
-                    const jobStatus = await facesApi.getJobStatus(uploadInfo.job_id, clientToken);
+                    const jobStatus = await facesApi.getJobStatus(uploadInfo.job_id, guestToken);
 
                     if (jobStatus.status === 'processed') {
                         clearInterval(pollInterval);
@@ -275,11 +185,17 @@ const GuestAccessPage: React.FC = () => {
                         const matches = jobStatus.result?.matches || [];
 
                         stopCamera();
-                        navigate(`/guest-gallery/${eventId}`, { state: { matches, guestName: formData.firstName } });
+                        navigate(`/guest-gallery/${eventId}`, {
+                            state: {
+                                matches,
+                                guestName: formData.name,
+                                guestToken
+                            }
+                        });
                     } else if (jobStatus.status === 'failed') {
                         clearInterval(pollInterval);
                         setScanStatus('Search Failed');
-                        setCameraError('Face search failed. Please try again.');
+                        setCameraError(jobStatus.error || 'Face search failed. Please try again.');
                         setIsScanning(false);
                     } else if (attempts >= maxAttempts) {
                         clearInterval(pollInterval);
@@ -311,6 +227,7 @@ const GuestAccessPage: React.FC = () => {
         setIsCameraReady(false);
     };
 
+    // SCAN STEP
     if (step === 'SCAN') {
         return (
             <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-4 font-sans text-white relative overflow-hidden">
@@ -334,7 +251,7 @@ const GuestAccessPage: React.FC = () => {
              `}</style>
 
                 <div className="text-center mb-8 z-10">
-                    <h1 className="text-2xl font-bold mb-2">Hello {formData.firstName}!</h1>
+                    <h1 className="text-2xl font-bold mb-2">Hello {formData.name}!</h1>
                     <p className="text-slate-400 text-sm">Scanning your face to find your memories</p>
                 </div>
 
@@ -405,7 +322,7 @@ const GuestAccessPage: React.FC = () => {
                                 scanStatus === 'Ready to Scan' ? 'Scan My Face' : (
                                     <span className="flex items-center gap-2">
                                         <span className="w-2 h-2 bg-white rounded-full animate-bounce"></span>
-                                        Thinking...
+                                        Processing...
                                     </span>
                                 )
                             ) : (
@@ -420,12 +337,12 @@ const GuestAccessPage: React.FC = () => {
                     <button
                         onClick={() => {
                             stopCamera();
-                            setStep('VERIFY_EMAIL');
+                            setStep('INFO');
                         }}
                         className={cn("flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors mx-auto", isRTL && "flex-row-reverse")}
                     >
                         <ArrowLeft size={12} className={cn(isRTL && "rotate-180")} />
-                        Back to verification
+                        Back to details
                     </button>
                 </div>
 
@@ -434,163 +351,50 @@ const GuestAccessPage: React.FC = () => {
         );
     }
 
-    if (step === 'VERIFY_EMAIL') {
-        return (
-            <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans text-start">
-                <div className="bg-white w-full max-w-[440px] rounded-[2rem] shadow-2xl p-8 sm:p-10 text-center relative overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-slate-100">
-
-                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600"></div>
-
-                    <div className="animate-in fade-in slide-in-from-right-8 duration-300">
-                        <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6 mt-2 shadow-inner">
-                            <ShieldCheck className="text-indigo-500 w-7 h-7 stroke-[2.5]" />
-                        </div>
-
-                        <h1 className="text-2xl font-black text-slate-900 mb-2 tracking-tight uppercase">Verify Email</h1>
-                        <p className="text-sm text-slate-500 mb-4 font-medium px-4">We've sent a 6-digit verification code to <span className="text-slate-900 font-bold">{formData.email}</span></p>
-
-                        <div className="flex justify-center gap-2 mb-8">
-                            {otp.map((digit, idx) => (
-                                <input
-                                    key={idx}
-                                    ref={el => { otpRefs.current[idx] = el }}
-                                    type="text"
-                                    inputMode="numeric"
-                                    maxLength={1}
-                                    value={digit}
-                                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                                    className={cn(
-                                        "w-10 h-14 rounded-xl border text-center text-xl font-black focus:outline-none focus:ring-4 focus:ring-offset-0 transition-all",
-                                        error
-                                            ? 'border-red-300 focus:ring-red-100 bg-red-50 text-red-600'
-                                            : 'border-slate-200 focus:ring-blue-100 focus:border-slate-400 bg-slate-50 text-slate-900'
-                                    )}
-                                />
-                            ))}
-                        </div>
-
-                        {error && (
-                            <div className="mb-8 bg-red-50 text-red-600 text-[13px] py-3.5 px-4 rounded-2xl font-bold border border-red-100 flex items-center justify-center gap-2">
-                                <AlertCircle size={16} />
-                                {error}
-                            </div>
-                        )}
-
-                        <button
-                            onClick={handleOtpVerify}
-                            disabled={!isOtpComplete || isLoading}
-                            className={cn(
-                                "w-full font-black py-4 rounded-2xl transition-all flex items-center justify-center shadow-xl uppercase tracking-[0.1em] text-sm active:scale-[0.98]",
-                                isOtpComplete
-                                    ? 'bg-[#0F172A] hover:bg-slate-800 text-white shadow-slate-900/10'
-                                    : 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-none'
-                            )}
-                        >
-                            {isLoading ? (
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            ) : "Verify Identity"}
-                        </button>
-
-                        <div className="mt-8">
-                            <button
-                                onClick={() => {
-                                    setOtp(['', '', '', '', '', '']);
-                                    setStep('INFO');
-                                }}
-                                className="text-[11px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center justify-center gap-1 mx-auto"
-                            >
-                                <ArrowLeft size={12} strokeWidth={3} /> Back to details
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    // INFO STEP
+    // INFO STEP - Simplified form
     return (
         <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans">
-            <div className="bg-white w-full max-w-[480px] rounded-[2rem] shadow-2xl p-8 sm:p-10 text-center relative overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-slate-100">
+            <div className="bg-white w-full max-w-[440px] rounded-[2rem] shadow-2xl p-8 sm:p-10 text-center relative overflow-hidden animate-in fade-in zoom-in-95 duration-300 border border-slate-100">
 
                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
 
-                <div className="w-16 h-16 bg-orange-50 rounded-[1.25rem] flex items-center justify-center mx-auto mb-6 mt-2 shadow-inner">
-                    <Lock className="text-orange-400 w-7 h-7 stroke-[2.5]" />
+                <div className="w-16 h-16 bg-blue-50 rounded-[1.25rem] flex items-center justify-center mx-auto mb-6 mt-2 shadow-inner">
+                    <ScanFace className="text-blue-500 w-7 h-7 stroke-[2]" />
                 </div>
 
                 <h1 className="text-2xl font-black text-slate-900 mb-2 tracking-tight uppercase">{t('guest_access')}</h1>
-                <p className="text-sm text-slate-500 mb-10 font-medium px-4">Provide your details to securely access your personal photos from the event.</p>
+                <p className="text-sm text-slate-500 mb-8 font-medium px-4">
+                    Enter your name to find photos of you from the event
+                </p>
 
-                <div className="space-y-4 mb-10 text-start">
-                    <div className="grid grid-cols-2 gap-4">
-                        <Input
-                            label="First Name*"
-                            name="firstName"
-                            placeholder="e.g. John"
-                            value={formData.firstName}
-                            onChange={handleInputChange}
-                            leftIcon={<User size={16} />}
-                            className="bg-slate-50 border-slate-200 focus:bg-white rounded-xl"
-                        />
-                        <Input
-                            label="Last Name"
-                            name="lastName"
-                            placeholder="e.g. Doe"
-                            value={formData.lastName}
-                            onChange={handleInputChange}
-                            className="bg-slate-50 border-slate-200 focus:bg-white rounded-xl"
-                        />
-                    </div>
+                <div className="space-y-4 mb-8 text-start">
+                    <Input
+                        label="Your Name *"
+                        name="name"
+                        placeholder="e.g. John Doe"
+                        value={formData.name}
+                        onChange={handleInputChange}
+                        leftIcon={<User size={16} />}
+                        className="bg-slate-50 border-slate-200 focus:bg-white rounded-xl"
+                    />
 
                     <Input
-                        label="Email Address*"
+                        label="Email (Optional)"
                         name="email"
                         type="email"
-                        placeholder="john@example.com"
+                        placeholder="your@email.com"
                         value={formData.email}
                         onChange={handleInputChange}
                         leftIcon={<Mail size={16} />}
                         className="bg-slate-50 border-slate-200 focus:bg-white rounded-xl"
                     />
-
-                    <Input
-                        label="Phone Number*"
-                        name="phone"
-                        type="tel"
-                        placeholder="+1 234 567 890"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        leftIcon={<Phone size={16} />}
-                        className="bg-slate-50 border-slate-200 focus:bg-white rounded-xl"
-                    />
-
-                    <div className="pt-4 border-t border-slate-50">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 block text-center">Guest Access Pin*</label>
-                        <div className="flex justify-center gap-4">
-                            {pin.map((digit, idx) => (
-                                <input
-                                    key={idx}
-                                    ref={el => { inputRefs.current[idx] = el }}
-                                    type="password"
-                                    inputMode="numeric"
-                                    maxLength={1}
-                                    value={digit}
-                                    onChange={(e) => handlePinChange(idx, e.target.value)}
-                                    onKeyDown={(e) => handlePinKeyDown(idx, e)}
-                                    className={`w-14 h-14 rounded-[1rem] border text-center text-2xl font-bold focus:outline-none focus:ring-4 focus:ring-offset-0 transition-all ${error
-                                        ? 'border-red-300 focus:ring-red-100 bg-red-50 text-red-600 shadow-[0_0_0_4px_rgba(239,68,68,0.05)]'
-                                        : 'border-slate-200 focus:ring-blue-100 focus:border-slate-400 bg-slate-50 text-slate-900'
-                                        }`}
-                                />
-                            ))}
-                        </div>
-                    </div>
+                    <p className="text-xs text-slate-400 text-center">
+                        We'll send you a link to your photos if provided
+                    </p>
                 </div>
 
                 {error && (
-                    <div className="mb-8 bg-red-50 text-red-600 text-[13px] py-3 px-4 rounded-xl font-bold border border-red-100 animate-in fade-in slide-in-from-top-1 flex items-center justify-center gap-2">
+                    <div className="mb-6 bg-red-50 text-red-600 text-[13px] py-3 px-4 rounded-xl font-bold border border-red-100 animate-in fade-in slide-in-from-top-1 flex items-center justify-center gap-2">
                         <AlertCircle size={16} />
                         {error}
                     </div>
@@ -606,15 +410,19 @@ const GuestAccessPage: React.FC = () => {
                 >
                     {isLoading ? (
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : "Continue"}
+                    ) : (
+                        <>
+                            <Camera size={16} className="mr-2" />
+                            Continue to Face Scan
+                        </>
+                    )}
                 </button>
 
-                <button
-                    onClick={() => navigate(`/share-event/${eventId}`)}
-                    className="mt-10 text-[11px] font-black text-slate-300 hover:text-slate-500 uppercase tracking-widest transition-all"
-                >
-                    {t('exit_simulation')}
-                </button>
+                {eventData && (
+                    <p className="mt-8 text-xs text-slate-400">
+                        Event: <span className="font-semibold text-slate-600">{eventData.title}</span>
+                    </p>
+                )}
             </div>
         </div>
     );
