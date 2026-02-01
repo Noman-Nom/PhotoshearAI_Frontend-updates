@@ -698,10 +698,22 @@ const EventDetailsPage: React.FC = () => {
 
     const handlePublishEvent = async () => {
         if (!event) return;
+        const currentCollections = [...event.collections]; // Preserve current collection state
         try {
             await publishEvent(event.id);
-            // Update local state
-            setEvent(prev => prev ? ({ ...prev, status: 'Published' }) : null);
+            // Update local state while preserving collection items
+            setEvent(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    status: 'Published',
+                    // Merge preserved items into updated collections
+                    collections: prev.collections.map(c => {
+                        const preserved = currentCollections.find(p => p.id === c.id);
+                        return preserved ? { ...c, items: preserved.items } : c;
+                    })
+                };
+            });
             // Also update SHARED_EVENTS for backwards compatibility with collections
             const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
             if (dbEventIndex !== -1) {
@@ -720,10 +732,22 @@ const EventDetailsPage: React.FC = () => {
 
     const confirmUnpublish = async () => {
         if (!event) return;
+        const currentCollections = [...event.collections]; // Preserve current collection state
         try {
             await unpublishEvent(event.id);
-            // Update local state
-            setEvent(prev => prev ? ({ ...prev, status: 'Draft' }) : null);
+            // Update local state while preserving collection items
+            setEvent(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    status: 'Draft',
+                    // Merge preserved items into updated collections
+                    collections: prev.collections.map(c => {
+                        const preserved = currentCollections.find(p => p.id === c.id);
+                        return preserved ? { ...c, items: preserved.items } : c;
+                    })
+                };
+            });
             // Also update SHARED_EVENTS for backwards compatibility with collections
             const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
             if (dbEventIndex !== -1) {
@@ -779,14 +803,15 @@ const EventDetailsPage: React.FC = () => {
         let successCount = 0;
         const dbEventIndex = SHARED_EVENTS.findIndex(e => e.id === event.id);
 
-        // Process one by one for better UI feedback (progress and intermediate updates)
-        for (const file of newFiles) {
+        // Concurrent upload with concurrency limit
+        const CONCURRENCY_LIMIT = 3;
+        
+        const uploadSingleFile = async (file: File): Promise<{ success: boolean; file: File; result?: any }> => {
             try {
                 const isVideo = file.type.startsWith('video');
                 const result = await uploadEventMedia(event.id, activeCollectionId, file);
 
-                // Trigger face recognition processing
-                // We don't await this to keep UI responsive, just fire and forget (with logging)
+                // Trigger face recognition processing (fire and forget)
                 mediaApi.confirmUpload(result.media_id, event.id).catch(err =>
                     console.error("Failed to trigger face processing", err)
                 );
@@ -829,13 +854,7 @@ const EventDetailsPage: React.FC = () => {
                     };
                 });
 
-                batchPhotos += currentBatchPhotos;
-                batchVideos += currentBatchVideos;
-                batchSize += currentBatchSize;
-                successCount++;
-                setUploadProgress(prev => ({ ...prev, current: successCount }));
-
-                // Sync with SHARED_EVENTS for consistency with other parts of the app
+                // Sync with SHARED_EVENTS for consistency
                 if (dbEventIndex !== -1) {
                     const ev = SHARED_EVENTS[dbEventIndex];
                     ev.totalPhotos += currentBatchPhotos;
@@ -850,10 +869,37 @@ const EventDetailsPage: React.FC = () => {
                     }
                 }
 
+                return { 
+                    success: true, 
+                    file, 
+                    result: { currentBatchPhotos, currentBatchVideos, currentBatchSize } 
+                };
             } catch (error) {
                 console.error("Failed to upload", file.name, error);
-                toastError(`Failed to upload ${file.name}`);
+                return { success: false, file };
             }
+        };
+
+        // Process files in concurrent batches
+        for (let i = 0; i < newFiles.length; i += CONCURRENCY_LIMIT) {
+            const batch = newFiles.slice(i, i + CONCURRENCY_LIMIT);
+            const results = await Promise.allSettled(batch.map(uploadSingleFile));
+
+            for (const result of results) {
+                if (result.status === 'fulfilled' && result.value.success) {
+                    successCount++;
+                    batchPhotos += result.value.result?.currentBatchPhotos || 0;
+                    batchVideos += result.value.result?.currentBatchVideos || 0;
+                    batchSize += result.value.result?.currentBatchSize || 0;
+                } else if (result.status === 'fulfilled' && !result.value.success) {
+                    toastError(`Failed to upload ${result.value.file.name}`);
+                } else if (result.status === 'rejected') {
+                    console.error('Upload batch error:', result.reason);
+                }
+            }
+            
+            // Update progress after each batch
+            setUploadProgress({ current: Math.min(i + CONCURRENCY_LIMIT, newFiles.length), total: newFiles.length });
         }
 
         setIsUploading(false);
