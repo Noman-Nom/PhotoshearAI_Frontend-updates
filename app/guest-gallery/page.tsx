@@ -57,7 +57,7 @@ const GuestGalleryPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const location = useLocation();
-    const { matches, guestName: stateGuestName } = location.state || {};
+    const { matches, guestName: stateGuestName, guestToken } = location.state || {};
 
     const { getEventById } = useEvents();
     const [event, setEvent] = useState<LocalEvent | null>(null);
@@ -93,22 +93,43 @@ const GuestGalleryPage: React.FC = () => {
                             const photos: LocalMediaItem[] = [];
                             const seen = new Set();
 
-                            // Matches structure: [ { matches: [ { media_id, media_url ... } ] } ]
-                            matches.forEach((faceResult: any) => {
-                                (faceResult.matches || []).forEach((match: any) => {
+                            // Handle both flat array and nested structure from face search
+                            // Flat array: [{ media_id, thumbnail_url, original_url, confidence }]
+                            // Nested: [{ matches: [...] }]
+                            const isNested = matches[0]?.matches !== undefined;
+
+                            if (isNested) {
+                                matches.forEach((faceResult: any) => {
+                                    (faceResult.matches || []).forEach((match: any) => {
+                                        if (match.media_id && !seen.has(match.media_id)) {
+                                            seen.add(match.media_id);
+                                            photos.push({
+                                                id: match.media_id,
+                                                url: match.original_url || match.media_url,
+                                                thumbnailUrl: match.thumbnail_url || match.original_url || match.media_url,
+                                                type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
+                                                name: 'Matched Photo',
+                                                size: match.size_bytes || 0
+                                            });
+                                        }
+                                    });
+                                });
+                            } else {
+                                // Flat array format from facesApi
+                                matches.forEach((match: any) => {
                                     if (match.media_id && !seen.has(match.media_id)) {
                                         seen.add(match.media_id);
                                         photos.push({
                                             id: match.media_id,
-                                            url: match.media_url,
-                                            thumbnailUrl: match.thumbnail_url || match.media_url, // Fallback
+                                            url: match.original_url || match.media_url,
+                                            thumbnailUrl: match.thumbnail_url || match.original_url || match.media_url,
                                             type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
                                             name: 'Matched Photo',
-                                            size: 0 // Size might not be available in match result
+                                            size: match.size_bytes || 0
                                         });
                                     }
                                 });
-                            });
+                            }
                             setFoundPhotos(photos);
                         } else {
                             // If no matches passed, maybe we should fetch all photos?
@@ -394,7 +415,7 @@ const GuestGalleryPage: React.FC = () => {
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
                                         <div className="flex items-center justify-between">
                                             <div className="text-white">
-                                                <p className="text-[10px] opacity-80 font-medium">{formatBytes(item.sizeBytes)}</p>
+                                                <p className="text-[10px] opacity-80 font-medium">{formatBytes(item.size)}</p>
                                             </div>
                                             <div className="flex gap-2">
                                                 <button className="p-2 bg-white/20 backdrop-blur-md hover:bg-white/40 rounded-lg text-white transition-colors">
