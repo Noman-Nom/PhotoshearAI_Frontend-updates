@@ -523,10 +523,16 @@ const MediaViewPage: React.FC<MediaViewPageProps> = ({ viewContext }) => {
       if (targetParentId) {
         setComments(prev => prev.map(c => {
           if (c.id === targetParentId) {
-            return {
-              ...c,
-              replies: c.replies?.map(r => r.id === optimisticComment.id ? realComment : r) || [realComment]
-            };
+            // Find and replace the optimistic reply by its temp ID
+            const existingReplies = c.replies || [];
+            const optimisticIndex = existingReplies.findIndex(r => r.id === optimisticComment.id);
+            if (optimisticIndex !== -1) {
+              const updatedReplies = [...existingReplies];
+              updatedReplies[optimisticIndex] = realComment;
+              return { ...c, replies: updatedReplies };
+            }
+            // If not found (edge case), append
+            return { ...c, replies: [...existingReplies, realComment] };
           }
           return c;
         }));
@@ -996,7 +1002,10 @@ const MediaViewPage: React.FC<MediaViewPageProps> = ({ viewContext }) => {
                     )}
                     style={{
                       opacity: (activeBranding.logoOpacity ?? 90) / 100,
-                      width: `${(activeBranding.logoSize ?? 15) * 5}px`
+                      // Use percentage-based sizing for center positions, fixed pixels for corners
+                      width: (activeBranding.watermarkPosition || 'top-right').includes('center')
+                        ? `${(activeBranding.logoSize ?? 15) / 2}%`  // 1-100% slider maps to 0.5-50% of container
+                        : `${(activeBranding.logoSize ?? 15) * 5}px`  // Fixed pixel for corners
                     }}
                   >
                     <img
