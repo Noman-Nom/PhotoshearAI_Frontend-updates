@@ -41,6 +41,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onDelete, o
   const navigate = useNavigate();
   const { t, isRTL } = useTranslation();
   const isPublished = event.status === 'Published';
+  const [imageError, setImageError] = React.useState(false);
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -59,11 +60,12 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onDelete, o
     >
       {/* Image Section */}
       <div className="relative flex-1 w-full overflow-hidden">
-        {event.imageUrl ? (
+        {event.imageUrl && !imageError ? (
           <img
             src={event.imageUrl}
             alt={event.title}
-            className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105 bg-slate-50"
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 bg-slate-50"
+            onError={() => setImageError(true)}
           />
         ) : (
           <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center text-slate-300">
