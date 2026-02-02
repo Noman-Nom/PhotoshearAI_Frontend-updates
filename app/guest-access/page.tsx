@@ -168,48 +168,57 @@ const GuestAccessPage: React.FC = () => {
             setScanStatus('Searching Gallery...');
             await facesApi.startSearch(uploadInfo.job_id, guestToken);
 
-            // 5. Poll for Results
-            let attempts = 0;
-            const maxAttempts = 30; // 30 seconds timeout
+            // 5. Poll for Results - use async loop to avoid overlapping requests
+            const pollForResults = async () => {
+                let attempts = 0;
+                const maxAttempts = 60; // 60 seconds timeout
+                const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-            const pollInterval = setInterval(async () => {
-                try {
+                while (attempts < maxAttempts) {
                     attempts++;
-                    const jobStatus = await facesApi.getJobStatus(uploadInfo.job_id, guestToken);
+                    try {
+                        const jobStatus = await facesApi.getJobStatus(uploadInfo.job_id, guestToken);
 
-                    if (jobStatus.status === 'processed') {
-                        clearInterval(pollInterval);
-                        setScanStatus('Match Found!');
+                        if (jobStatus.status === 'processed') {
+                            setScanStatus('Match Found!');
 
-                        // Extract matches from result
-                        const matches = jobStatus.result?.matches || [];
+                            // Extract matches from result
+                            const matches = jobStatus.result?.matches || [];
 
-                        stopCamera();
-                        navigate(`/guest-gallery/${eventId}`, {
-                            state: {
-                                matches,
-                                guestName: formData.name,
-                                guestToken,
-                                eventTitle: eventData?.title || 'Event Gallery'
-                            }
-                        });
-                    } else if (jobStatus.status === 'failed') {
-                        clearInterval(pollInterval);
-                        setScanStatus('Search Failed');
-                        setCameraError(jobStatus.error || 'Face search failed. Please try again.');
+                            stopCamera();
+                            navigate(`/guest-gallery/${eventId}`, {
+                                state: {
+                                    matches,
+                                    guestName: formData.name,
+                                    guestToken,
+                                    eventTitle: eventData?.title || 'Event Gallery'
+                                }
+                            });
+                            return; // Exit loop on success
+                        } else if (jobStatus.status === 'failed') {
+                            setScanStatus('Search Failed');
+                            setCameraError(jobStatus.error || 'Face search failed. Please try again.');
+                            setIsScanning(false);
+                            return; // Exit loop on failure
+                        }
+
+                        // Still processing, wait before next poll
+                        await delay(1000);
+                    } catch (e) {
                         setIsScanning(false);
-                    } else if (attempts >= maxAttempts) {
-                        clearInterval(pollInterval);
-                        setScanStatus('Timeout');
-                        setCameraError('Search timed out. Please try again.');
-                        setIsScanning(false);
+                        setCameraError('Network error during search.');
+                        return; // Exit on network error
                     }
-                } catch (e) {
-                    clearInterval(pollInterval);
-                    setIsScanning(false);
-                    setCameraError('Network error during search.');
                 }
-            }, 1000);
+
+                // Timeout reached
+                setScanStatus('Timeout');
+                setCameraError('Search timed out. Please try again.');
+                setIsScanning(false);
+            };
+
+            // Start polling
+            pollForResults();
 
         } catch (err: any) {
             console.error("Search flow error", err);
