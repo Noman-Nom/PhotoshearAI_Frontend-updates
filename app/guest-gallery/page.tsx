@@ -9,31 +9,13 @@ import {
     FileVideo,
     Play,
     Image as ImageIcon,
-    Lock,
-    X,
-    ChevronLeft,
-    ChevronRight,
-    MessageSquare,
-    Paperclip,
-    Smile,
-    Send,
-    MoreHorizontal,
-    Search as SearchIcon,
-    Filter,
-    ArrowUpDown,
-    Globe,
-    ChevronDown
 } from 'lucide-react';
 import { incrementGuestDownloadCount } from '../../constants';
-import { useEvents } from '../../contexts/EventsContext';
 import { Button } from '../../components/ui/Button';
 import { formatBytes } from '../../utils/formatters';
 import { cn } from '../../utils/cn';
 import { downloadMediaWithBranding } from '../../utils/imageProcessor';
-import { brandingApi } from '../../services/brandingApi';
-import { mediaApi } from '../../services/mediaApi';
 
-// Local types for gallery
 interface LocalMediaItem {
     id: string;
     url: string;
@@ -43,133 +25,71 @@ interface LocalMediaItem {
     thumbnailUrl?: string;
 }
 
-interface LocalEvent {
-    id: string;
-    title: string;
-    status: string;
-    coverUrl: string;
-    branding?: boolean;
-    brandingId?: string;
-    items: LocalMediaItem[];
-}
-
 const GuestGalleryPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const location = useLocation();
-    const { matches, guestName: stateGuestName, guestToken } = location.state || {};
+    const { matches, guestName: stateGuestName, guestToken, eventTitle: stateEventTitle } = location.state || {};
 
-    const { getEventById } = useEvents();
-    const [event, setEvent] = useState<LocalEvent | null>(null);
     const [foundPhotos, setFoundPhotos] = useState<LocalMediaItem[]>([]);
     const [isDownloading, setIsDownloading] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [activeBranding, setActiveBranding] = useState<any>(null);
 
-    // Mock User Data
+    // Use data from router state (no API call needed)
     const GUEST_NAME = stateGuestName || "Guest";
+    const EVENT_TITLE = stateEventTitle || "Event Gallery";
     const GUEST_AVATAR = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80";
 
+    // Load photos from matches on mount
     useEffect(() => {
-        const loadEvent = async () => {
-            if (eventId) {
-                const found = await getEventById(eventId);
-                if (found) {
-                    // Transform API event to local format
-                    const localEvent: LocalEvent = {
-                        id: found.id,
-                        title: found.title,
-                        status: found.status === 'published' ? 'Published' : 'Draft',
-                        coverUrl: found.cover_url || '',
-                        branding: found.branding_enabled,
-                        brandingId: found.branding_id || undefined,
-                        items: [] // Will be populated from collections API
-                    };
-                    setEvent(localEvent);
+        if (matches && matches.length > 0) {
+            const photos: LocalMediaItem[] = [];
+            const seen = new Set();
 
-                    // Load photos from matches if available
-                    if (localEvent.status === 'Published') {
-                        if (matches && matches.length > 0) {
-                            const photos: LocalMediaItem[] = [];
-                            const seen = new Set();
+            // Handle both flat array and nested structure from face search
+            // Nested: [{ query_face: {...}, matches: [...] }]
+            // Flat: [{ media_id, media_url, ... }]
+            const isNested = matches[0]?.matches !== undefined;
 
-                            // Handle both flat array and nested structure from face search
-                            // Flat array: [{ media_id, thumbnail_url, original_url, confidence }]
-                            // Nested: [{ matches: [...] }]
-                            const isNested = matches[0]?.matches !== undefined;
-
-                            if (isNested) {
-                                matches.forEach((faceResult: any) => {
-                                    (faceResult.matches || []).forEach((match: any) => {
-                                        if (match.media_id && !seen.has(match.media_id)) {
-                                            seen.add(match.media_id);
-                                            photos.push({
-                                                id: match.media_id,
-                                                url: match.original_url || match.media_url,
-                                                thumbnailUrl: match.thumbnail_url || match.original_url || match.media_url,
-                                                type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
-                                                name: 'Matched Photo',
-                                                size: match.size_bytes || 0
-                                            });
-                                        }
-                                    });
-                                });
-                            } else {
-                                // Flat array format from facesApi
-                                matches.forEach((match: any) => {
-                                    if (match.media_id && !seen.has(match.media_id)) {
-                                        seen.add(match.media_id);
-                                        photos.push({
-                                            id: match.media_id,
-                                            url: match.original_url || match.media_url,
-                                            thumbnailUrl: match.thumbnail_url || match.original_url || match.media_url,
-                                            type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
-                                            name: 'Matched Photo',
-                                            size: match.size_bytes || 0
-                                        });
-                                    }
-                                });
-                            }
-                            setFoundPhotos(photos);
-                        } else {
-                            // If no matches passed, maybe we should fetch all photos?
-                            // For Guest Gallery, we typically show *their* photos. 
-                            // If they arrived without search (e.g. direct link), we might check session.
-                            // For now, leave empty if no matches.
-                            setFoundPhotos([]);
+            if (isNested) {
+                matches.forEach((faceResult: any) => {
+                    (faceResult.matches || []).forEach((match: any) => {
+                        if (match.media_id && !seen.has(match.media_id)) {
+                            seen.add(match.media_id);
+                            photos.push({
+                                id: match.media_id,
+                                url: match.media_url || match.original_url,
+                                thumbnailUrl: match.thumbnail_url || match.media_url || match.original_url,
+                                type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
+                                name: 'Matched Photo',
+                                size: match.size_bytes || 0
+                            });
                         }
-                    } else {
-                        setFoundPhotos([]);
-                    }
-                }
-            }
-        };
-        loadEvent();
-    }, [eventId, getEventById, matches]);
-
-    // Load Branding Configuration
-    useEffect(() => {
-        const fetchBranding = async () => {
-            if (event?.branding && event.brandingId) {
-                try {
-                    // Try fetching from API
-                    const brand = await brandingApi.getById(event.brandingId);
-                    if (brand && brand.status === 'active') {
-                        setActiveBranding(brand);
-                    } else {
-                        setActiveBranding(null);
-                    }
-                } catch (e) {
-                    console.error("Failed to load branding", e);
-                    setActiveBranding(null);
-                }
+                    });
+                });
             } else {
-                setActiveBranding(null);
+                // Flat array format
+                matches.forEach((match: any) => {
+                    if (match.media_id && !seen.has(match.media_id)) {
+                        seen.add(match.media_id);
+                        photos.push({
+                            id: match.media_id,
+                            url: match.media_url || match.original_url,
+                            thumbnailUrl: match.thumbnail_url || match.media_url || match.original_url,
+                            type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
+                            name: 'Matched Photo',
+                            size: match.size_bytes || 0
+                        });
+                    }
+                });
             }
-        };
+            setFoundPhotos(photos);
+        }
+    }, [matches]);
 
-        fetchBranding();
-    }, [event?.branding, event?.brandingId]);
+    // Branding can be loaded via a public endpoint if needed - for now skip
+    // Guest galleries typically don't need branding since it's applied server-side on download
 
     const handleDownload = (item: LocalMediaItem) => {
         downloadMediaWithBranding(item as any, activeBranding);
@@ -242,23 +162,8 @@ const GuestGalleryPage: React.FC = () => {
         }
     };
 
-    if (!event && !eventId) return null;
-
-    // Check if draft
-    if (event?.status === 'Draft') {
-        return (
-            <div className="min-h-screen bg-white font-sans flex flex-col items-center justify-center p-8 text-center">
-                <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
-                    <Lock size={32} className="text-amber-500" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Event Not Yet Published</h2>
-                <p className="text-slate-500 max-w-md">
-                    This gallery is currently in draft mode and is not visible to guests.
-                    Please contact the photographer or administrator.
-                </p>
-            </div>
-        );
-    }
+    // If no eventId, nothing to display
+    if (!eventId) return null;
 
     const isAllSelected = foundPhotos.length > 0 && selectedIds.size === foundPhotos.length;
 
@@ -274,7 +179,7 @@ const GuestGalleryPage: React.FC = () => {
                         <ArrowLeft size={20} />
                     </button>
                     <div className="min-w-0">
-                        <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wide truncate">{event?.title || 'Event Gallery'}</h1>
+                        <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wide truncate">{EVENT_TITLE}</h1>
                         <div className="flex items-center gap-2">
                             <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", foundPhotos.length > 0 ? "bg-emerald-500" : "bg-slate-300")}></div>
                             <span className="text-xs text-slate-500 truncate">Guest Gallery • {foundPhotos.length} Photos</span>
