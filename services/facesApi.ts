@@ -1,4 +1,5 @@
 import { api } from '../utils/api';
+import { getApiBaseUrl } from '../utils/subdomain';
 
 export interface PersonResponse {
     id: string;
@@ -93,7 +94,7 @@ export const facesApi = {
      * Returns presigned URL to upload face image
      */
     async createSearch(eventId: string, clientToken?: string): Promise<FaceSearchUploadResponse> {
-        const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+        const API_BASE_URL = getApiBaseUrl();
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
@@ -134,7 +135,7 @@ export const facesApi = {
      * Start face search after image upload
      */
     async startSearch(jobId: string, clientToken?: string): Promise<{ status: string }> {
-        const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+        const API_BASE_URL = getApiBaseUrl();
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
@@ -159,7 +160,7 @@ export const facesApi = {
      * Poll job status and get results
      */
     async getJobStatus(jobId: string, clientToken?: string): Promise<FaceSearchJobResponse> {
-        const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+        const API_BASE_URL = getApiBaseUrl();
         const headers: Record<string, string> = {};
         if (clientToken) {
             headers['X-Client-Token'] = clientToken;
