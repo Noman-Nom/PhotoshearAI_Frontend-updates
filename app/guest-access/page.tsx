@@ -189,7 +189,8 @@ const GuestAccessPage: React.FC = () => {
                             state: {
                                 matches,
                                 guestName: formData.name,
-                                guestToken
+                                guestToken,
+                                eventTitle: eventData?.title || 'Event Gallery'
                             }
                         });
                     } else if (jobStatus.status === 'failed') {
