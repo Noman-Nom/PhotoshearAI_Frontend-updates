@@ -1,20 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
     ArrowLeft,
     Download,
-    Share2,
     CheckCircle2,
     Check,
     FileVideo,
     Play,
     Image as ImageIcon,
+    X,
+    ChevronLeft,
+    ChevronRight,
 } from 'lucide-react';
 import { incrementGuestDownloadCount } from '../../constants';
 import { Button } from '../../components/ui/Button';
 import { formatBytes } from '../../utils/formatters';
 import { cn } from '../../utils/cn';
+import { facesApi } from '../../services/facesApi';
 import { downloadMediaWithBranding } from '../../utils/imageProcessor';
+import JSZip from 'jszip';
 
 interface LocalMediaItem {
     id: string;
@@ -29,72 +33,96 @@ const GuestGalleryPage: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const location = useLocation();
-    const { matches, guestName: stateGuestName, guestToken, eventTitle: stateEventTitle } = location.state || {};
+    const [searchParams] = useSearchParams();
+
+    const {
+        matches: stateMatches,
+        guestName: stateGuestName,
+        guestToken: stateGuestToken,
+        eventTitle: stateEventTitle,
+        profilePhotoUrl: stateProfilePhotoUrl,
+    } = location.state || {};
+
+    const urlJobId = searchParams.get('job_id');
 
     const [foundPhotos, setFoundPhotos] = useState<LocalMediaItem[]>([]);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [activeBranding, setActiveBranding] = useState<any>(null);
+    const [isLoadingFromUrl, setIsLoadingFromUrl] = useState(false);
+    const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-    // Use data from router state (no API call needed)
-    const GUEST_NAME = stateGuestName || "Guest";
-    const EVENT_TITLE = stateEventTitle || "Event Gallery";
-    const GUEST_AVATAR = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80";
+    const [guestName] = useState(stateGuestName || 'Guest');
+    const [eventTitle] = useState(stateEventTitle || 'Event Gallery');
+    const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(stateProfilePhotoUrl || null);
 
-    // Load photos from matches on mount
-    useEffect(() => {
-        if (matches && matches.length > 0) {
-            const photos: LocalMediaItem[] = [];
-            const seen = new Set();
+    const parseMatchesToPhotos = (matchData: any[]): LocalMediaItem[] => {
+        const photos: LocalMediaItem[] = [];
+        const seen = new Set();
 
-            // Handle both flat array and nested structure from face search
-            // Nested: [{ query_face: {...}, matches: [...] }]
-            // Flat: [{ media_id, media_url, ... }]
-            const isNested = matches[0]?.matches !== undefined;
+        const isNested = matchData[0]?.matches !== undefined;
 
-            if (isNested) {
-                matches.forEach((faceResult: any) => {
-                    (faceResult.matches || []).forEach((match: any) => {
-                        if (match.media_id && !seen.has(match.media_id)) {
-                            seen.add(match.media_id);
-                            photos.push({
-                                id: match.media_id,
-                                url: match.media_url || match.original_url,
-                                thumbnailUrl: match.thumbnail_url || match.media_url || match.original_url,
-                                type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
-                                name: 'Matched Photo',
-                                size: match.size_bytes || 0
-                            });
-                        }
-                    });
-                });
-            } else {
-                // Flat array format
-                matches.forEach((match: any) => {
-                    if (match.media_id && !seen.has(match.media_id)) {
-                        seen.add(match.media_id);
-                        photos.push({
-                            id: match.media_id,
-                            url: match.media_url || match.original_url,
-                            thumbnailUrl: match.thumbnail_url || match.media_url || match.original_url,
-                            type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
-                            name: 'Matched Photo',
-                            size: match.size_bytes || 0
-                        });
-                    }
+        const processMatch = (match: any) => {
+            if (match.media_id && !seen.has(match.media_id)) {
+                seen.add(match.media_id);
+                const originalName = match.filename || `photo_${match.media_id.substring(0, 8)}.jpg`;
+                photos.push({
+                    id: match.media_id,
+                    url: match.media_url || match.original_url || '',
+                    thumbnailUrl: match.thumbnail_url || match.media_url || match.original_url || '',
+                    type: match.mime_type?.startsWith('video') ? 'video' : 'photo',
+                    name: originalName,
+                    size: match.size_bytes || 0,
                 });
             }
-            setFoundPhotos(photos);
+        };
+
+        if (isNested) {
+            matchData.forEach((faceResult: any) => {
+                (faceResult.matches || []).forEach(processMatch);
+            });
+        } else {
+            matchData.forEach(processMatch);
         }
-    }, [matches]);
+        return photos;
+    };
 
-    // Branding can be loaded via a public endpoint if needed - for now skip
-    // Guest galleries typically don't need branding since it's applied server-side on download
+    useEffect(() => {
+        if (stateMatches && stateMatches.length > 0) {
+            setFoundPhotos(parseMatchesToPhotos(stateMatches));
+        }
+    }, [stateMatches]);
 
+    useEffect(() => {
+        if (!stateMatches && urlJobId && eventId) {
+            setIsLoadingFromUrl(true);
+            const token = stateGuestToken || sessionStorage.getItem('fotoshare_guest_token') || undefined;
+
+            const loadFromJob = async () => {
+                try {
+                    const jobStatus = await facesApi.getJobStatus(urlJobId, token);
+                    if (jobStatus.status === 'processed' && jobStatus.result) {
+                        const matches = (jobStatus.result as any)?.matches || [];
+                        const profile = (jobStatus.result as any)?.profile_photo_url || null;
+                        setFoundPhotos(parseMatchesToPhotos(matches));
+                        if (profile) setProfilePhotoUrl(profile);
+                    }
+                } catch (e) {
+                    console.error('Failed to load job results from URL:', e);
+                } finally {
+                    setIsLoadingFromUrl(false);
+                }
+            };
+            loadFromJob();
+        }
+    }, [urlJobId, eventId, stateMatches]);
+
+    // Use same download utility as client-gallery (proven to work)
     const handleDownload = (item: LocalMediaItem) => {
-        downloadMediaWithBranding(item as any, activeBranding);
-
-        // Track download for Guest Registry
+        downloadMediaWithBranding(
+            { id: item.id, url: item.url, name: item.name, type: item.type },
+            null // no branding for guest gallery
+        );
         const guestSessionId = sessionStorage.getItem('photmo_guest_session_id');
         if (guestSessionId) {
             incrementGuestDownloadCount(guestSessionId);
@@ -103,6 +131,7 @@ const GuestGalleryPage: React.FC = () => {
 
     const handleBatchDownload = async () => {
         setIsDownloading(true);
+        setDownloadProgress('Preparing...');
 
         const itemsToDownload = selectedIds.size > 0
             ? foundPhotos.filter(item => selectedIds.has(item.id))
@@ -110,19 +139,59 @@ const GuestGalleryPage: React.FC = () => {
 
         if (itemsToDownload.length === 0) {
             setIsDownloading(false);
+            setDownloadProgress(null);
             return;
         }
 
-        // Sequential individual downloads with branding using frontend fetch
-        itemsToDownload.forEach((item, index) => {
-            setTimeout(() => {
-                handleDownload(item);
+        // Single item: use direct download
+        if (itemsToDownload.length === 1) {
+            handleDownload(itemsToDownload[0]);
+            setIsDownloading(false);
+            setDownloadProgress(null);
+            return;
+        }
 
-                if (index === itemsToDownload.length - 1) {
-                    setIsDownloading(false);
+        try {
+            const zip = new JSZip();
+            let completed = 0;
+
+            for (const item of itemsToDownload) {
+                setDownloadProgress(`Downloading ${completed + 1}/${itemsToDownload.length}`);
+
+                try {
+                    // Use fetch (same as downloadBlob in imageProcessor.ts)
+                    const response = await fetch(item.url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const blob = await response.blob();
+                    zip.file(item.name, blob);
+                } catch (e) {
+                    console.error(`Failed to download ${item.name}:`, e);
                 }
-            }, index * 800);
-        });
+                completed++;
+            }
+
+            setDownloadProgress('Creating zip...');
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const safeName = eventTitle.replace(/[^a-zA-Z0-9]/g, '_');
+            const zipUrl = URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = zipUrl;
+            a.download = `${safeName}_photos.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(zipUrl);
+
+            const guestSessionId = sessionStorage.getItem('photmo_guest_session_id');
+            if (guestSessionId) {
+                incrementGuestDownloadCount(guestSessionId);
+            }
+        } catch (err) {
+            console.error('Batch download failed:', err);
+        } finally {
+            setIsDownloading(false);
+            setDownloadProgress(null);
+        }
     };
 
     const toggleSelection = (id: string, e: React.MouseEvent) => {
@@ -143,29 +212,70 @@ const GuestGalleryPage: React.FC = () => {
         }
     };
 
-    const handlePreview = (item: LocalMediaItem) => {
-        navigate(`/guest-gallery/${eventId}/view/${item.id}`);
-    };
+    const openLightbox = (index: number) => setLightboxIndex(index);
+    const closeLightbox = () => setLightboxIndex(null);
 
-    const getWatermarkPositionClass = (pos: string) => {
-        switch (pos) {
-            case 'top-left': return 'top-3 left-3';
-            case 'top-center': return 'top-3 left-1/2 -translate-x-1/2';
-            case 'top-right': return 'top-3 right-3';
-            case 'center-left': return 'top-1/2 left-3 -translate-y-1/2';
-            case 'center': return 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2';
-            case 'center-right': return 'top-1/2 right-3 -translate-y-1/2';
-            case 'bottom-left': return 'bottom-3 left-3';
-            case 'bottom-center': return 'bottom-3 left-1/2 -translate-x-1/2';
-            case 'bottom-right': return 'bottom-3 right-3';
-            default: return 'top-3 right-3';
+    const goToPrev = useCallback(() => {
+        if (lightboxIndex !== null && lightboxIndex > 0) {
+            setLightboxIndex(lightboxIndex - 1);
         }
-    };
+    }, [lightboxIndex]);
 
-    // If no eventId, nothing to display
+    const goToNext = useCallback(() => {
+        if (lightboxIndex !== null && lightboxIndex < foundPhotos.length - 1) {
+            setLightboxIndex(lightboxIndex + 1);
+        }
+    }, [lightboxIndex, foundPhotos.length]);
+
+    useEffect(() => {
+        if (lightboxIndex === null) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') closeLightbox();
+            else if (e.key === 'ArrowLeft') goToPrev();
+            else if (e.key === 'ArrowRight') goToNext();
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [lightboxIndex, goToPrev, goToNext]);
+
     if (!eventId) return null;
 
+    if (isLoadingFromUrl) {
+        return (
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-10 h-10 border-3 border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-sm text-slate-500 font-medium">Loading your photos...</p>
+                </div>
+            </div>
+        );
+    }
+
     const isAllSelected = foundPhotos.length > 0 && selectedIds.size === foundPhotos.length;
+    const lightboxItem = lightboxIndex !== null ? foundPhotos[lightboxIndex] : null;
+
+    const renderProfileAvatar = () => {
+        if (profilePhotoUrl) {
+            return (
+                <img
+                    src={profilePhotoUrl}
+                    alt={guestName}
+                    className="w-full h-full rounded-full object-cover border-4 border-white"
+                />
+            );
+        }
+        const initials = guestName
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase();
+        return (
+            <div className="w-full h-full rounded-full bg-slate-200 border-4 border-white flex items-center justify-center">
+                <span className="text-2xl font-bold text-slate-500">{initials}</span>
+            </div>
+        );
+    };
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
@@ -179,7 +289,7 @@ const GuestGalleryPage: React.FC = () => {
                         <ArrowLeft size={20} />
                     </button>
                     <div className="min-w-0">
-                        <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wide truncate">{EVENT_TITLE}</h1>
+                        <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wide truncate">{eventTitle}</h1>
                         <div className="flex items-center gap-2">
                             <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", foundPhotos.length > 0 ? "bg-emerald-500" : "bg-slate-300")}></div>
                             <span className="text-xs text-slate-500 truncate">Guest Gallery • {foundPhotos.length} Photos</span>
@@ -202,7 +312,7 @@ const GuestGalleryPage: React.FC = () => {
                                 className="bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-bold rounded-lg h-9 px-3 sm:px-4 shadow-sm whitespace-nowrap"
                             >
                                 <Download size={14} className="mr-2" />
-                                {selectedIds.size > 0 ? `Download (${selectedIds.size})` : 'Download All'}
+                                {downloadProgress || (selectedIds.size > 0 ? `Download (${selectedIds.size})` : 'Download All')}
                             </Button>
                         </>
                     )}
@@ -212,19 +322,15 @@ const GuestGalleryPage: React.FC = () => {
             {/* Hero Section */}
             <div className="flex flex-col items-center justify-center pt-12 pb-10 px-4 text-center bg-white">
                 <div className="relative mb-6">
-                    <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-tr from-blue-500 to-purple-500">
-                        <img
-                            src={GUEST_AVATAR}
-                            alt={GUEST_NAME}
-                            className="w-full h-full rounded-full object-cover border-4 border-white"
-                        />
+                    <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-tr from-blue-500 to-emerald-500">
+                        {renderProfileAvatar()}
                     </div>
                     <div className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full border-4 border-white flex items-center justify-center text-white shadow-sm">
                         <CheckCircle2 size={16} />
                     </div>
                 </div>
 
-                <h2 className="text-3xl font-bold text-slate-900 mb-2">Welcome, {GUEST_NAME}!</h2>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">Welcome, {guestName}!</h2>
                 {foundPhotos.length > 0 ? (
                     <p className="text-slate-500 flex items-center gap-1.5 justify-center">
                         We found <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md text-sm">{foundPhotos.length} photos</span> of you using AI.
@@ -243,14 +349,14 @@ const GuestGalleryPage: React.FC = () => {
                         <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
                             <ImageIcon size={32} className="text-slate-300" />
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900 mb-2">Media Has not been Added for this Event</h3>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">No Matching Photos Found</h3>
                         <p className="text-slate-500 text-sm max-w-md">
-                            It looks like the gallery is empty right now. Please check back later once photos and videos have been uploaded.
+                            We couldn't find any photos matching your face. This may happen if photos haven't been uploaded yet or processing is still in progress.
                         </p>
                     </div>
                 ) : (
                     <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
-                        {foundPhotos.map((item) => {
+                        {foundPhotos.map((item, index) => {
                             const isSelected = selectedIds.has(item.id);
                             return (
                                 <div
@@ -259,7 +365,7 @@ const GuestGalleryPage: React.FC = () => {
                                         "break-inside-avoid relative group rounded-xl overflow-hidden shadow-sm transition-all duration-300 cursor-pointer",
                                         isSelected ? "ring-4 ring-slate-900 ring-offset-2" : "bg-slate-100 hover:shadow-xl"
                                     )}
-                                    onClick={() => handlePreview(item)}
+                                    onClick={() => openLightbox(index)}
                                 >
                                     {item.type === 'video' ? (
                                         <div className="w-full aspect-[4/5] bg-slate-800 flex items-center justify-center relative">
@@ -287,18 +393,7 @@ const GuestGalleryPage: React.FC = () => {
                                         />
                                     )}
 
-                                    {/* Branding Watermark Overlay */}
-                                    {activeBranding && activeBranding.logo && (
-                                        <div className={cn("absolute pointer-events-none transition-all duration-200 z-0", getWatermarkPositionClass(activeBranding.watermarkPosition || 'top-right'))}>
-                                            <img
-                                                src={activeBranding.logo}
-                                                alt="watermark"
-                                                className="h-6 object-contain opacity-70 grayscale-[20%] drop-shadow-sm"
-                                            />
-                                        </div>
-                                    )}
-
-                                    {/* Selection Radio/Check Circle (Top Left) */}
+                                    {/* Selection Check Circle */}
                                     <div
                                         className={cn(
                                             "absolute top-3 left-3 z-10 p-1 rounded-full transition-opacity duration-200",
@@ -316,16 +411,12 @@ const GuestGalleryPage: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {/* Overlay (Bottom) */}
+                                    {/* Overlay */}
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
                                         <div className="flex items-center justify-between">
                                             <div className="text-white">
-                                                <p className="text-[10px] opacity-80 font-medium">{formatBytes(item.size)}</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button className="p-2 bg-white/20 backdrop-blur-md hover:bg-white/40 rounded-lg text-white transition-colors">
-                                                    <Share2 size={16} />
-                                                </button>
+                                                <p className="text-[10px] opacity-80 font-medium truncate max-w-[120px]">{item.name}</p>
+                                                {item.size > 0 && <p className="text-[10px] opacity-60">{formatBytes(item.size)}</p>}
                                             </div>
                                         </div>
                                         <button
@@ -345,6 +436,76 @@ const GuestGalleryPage: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Lightbox */}
+            {lightboxItem && lightboxIndex !== null && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+                    onClick={closeLightbox}
+                >
+                    <button
+                        className="absolute top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                        onClick={closeLightbox}
+                    >
+                        <X size={24} />
+                    </button>
+
+                    <div className="absolute top-4 left-4 z-50 text-white/70 text-sm font-medium">
+                        {lightboxIndex + 1} / {foundPhotos.length}
+                    </div>
+
+                    <button
+                        className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm font-semibold transition-colors"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(lightboxItem);
+                        }}
+                    >
+                        <Download size={16} />
+                        Download
+                    </button>
+
+                    {lightboxIndex > 0 && (
+                        <button
+                            className="absolute left-3 top-1/2 -translate-y-1/2 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                            onClick={(e) => { e.stopPropagation(); goToPrev(); }}
+                        >
+                            <ChevronLeft size={28} />
+                        </button>
+                    )}
+
+                    {lightboxIndex < foundPhotos.length - 1 && (
+                        <button
+                            className="absolute right-3 top-1/2 -translate-y-1/2 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                            onClick={(e) => { e.stopPropagation(); goToNext(); }}
+                        >
+                            <ChevronRight size={28} />
+                        </button>
+                    )}
+
+                    <div className="max-w-[90vw] max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                        {lightboxItem.type === 'video' ? (
+                            <video
+                                src={lightboxItem.url}
+                                controls
+                                autoPlay
+                                className="max-w-full max-h-[85vh] rounded-lg"
+                            />
+                        ) : (
+                            <img
+                                src={lightboxItem.url}
+                                alt={lightboxItem.name}
+                                className="max-w-full max-h-[85vh] rounded-lg object-contain"
+                            />
+                        )}
+                    </div>
+
+                    {/* Filename below image */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 text-white/50 text-xs font-medium">
+                        {lightboxItem.name} {lightboxItem.size > 0 && `• ${formatBytes(lightboxItem.size)}`}
+                    </div>
+                </div>
+            )}
 
             {/* Footer */}
             <footer className="py-8 text-center text-xs text-slate-400 border-t border-slate-50">
