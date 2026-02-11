@@ -38,6 +38,7 @@ const GuestAccessPage: React.FC = () => {
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [cameraError, setCameraError] = useState('');
     const [isCameraReady, setIsCameraReady] = useState(false);
+    const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
     useEffect(() => {
         return () => {
@@ -154,12 +155,28 @@ const GuestAccessPage: React.FC = () => {
             canvas.height = videoRef.current.videoHeight;
             canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
 
+            // Freeze camera — show captured frame instead of live feed
+            const capturedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            setCapturedImage(capturedDataUrl);
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                setStream(null);
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+
             const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
             if (!blob) throw new Error("Failed to capture image");
 
-            // 2. Create Search Job
+            // 2. Create Search Job — pass guest info for logging & email
             setScanStatus('Processing Biometrics...');
-            const uploadInfo = await facesApi.createSearch(eventId, guestToken);
+            const uploadInfo = await facesApi.createSearch(
+                eventId,
+                guestToken,
+                formData.name.trim() || undefined,
+                formData.email.trim() || undefined
+            );
 
             // 3. Upload Image to presigned URL
             await facesApi.uploadImage(uploadInfo.upload_url, blob);
@@ -168,10 +185,10 @@ const GuestAccessPage: React.FC = () => {
             setScanStatus('Searching Gallery...');
             await facesApi.startSearch(uploadInfo.job_id, guestToken);
 
-            // 5. Poll for Results - use async loop to avoid overlapping requests
+            // 5. Poll for Results
             const pollForResults = async () => {
                 let attempts = 0;
-                const maxAttempts = 60; // 60 seconds timeout
+                const maxAttempts = 60;
                 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
                 while (attempts < maxAttempts) {
@@ -182,46 +199,48 @@ const GuestAccessPage: React.FC = () => {
                         if (jobStatus.status === 'processed') {
                             setScanStatus('Match Found!');
 
-                            // Extract matches from result
                             const matches = jobStatus.result?.matches || [];
+                            const profilePhotoUrl = (jobStatus.result as any)?.profile_photo_url || null;
 
-                            stopCamera();
                             navigate(`/guest-gallery/${eventId}`, {
                                 state: {
                                     matches,
                                     guestName: formData.name,
                                     guestToken,
-                                    eventTitle: eventData?.title || 'Event Gallery'
+                                    eventTitle: eventData?.title || 'Event Gallery',
+                                    profilePhotoUrl,
+                                    jobId: uploadInfo.job_id,
                                 }
                             });
-                            return; // Exit loop on success
+                            return;
                         } else if (jobStatus.status === 'failed') {
                             setScanStatus('Search Failed');
                             setCameraError(jobStatus.error || 'Face search failed. Please try again.');
+                            setCapturedImage(null);
                             setIsScanning(false);
-                            return; // Exit loop on failure
+                            return;
                         }
 
-                        // Still processing, wait before next poll
                         await delay(1000);
                     } catch (e) {
+                        setCapturedImage(null);
                         setIsScanning(false);
                         setCameraError('Network error during search.');
-                        return; // Exit on network error
+                        return;
                     }
                 }
 
-                // Timeout reached
                 setScanStatus('Timeout');
                 setCameraError('Search timed out. Please try again.');
+                setCapturedImage(null);
                 setIsScanning(false);
             };
 
-            // Start polling
             pollForResults();
 
         } catch (err: any) {
             console.error("Search flow error", err);
+            setCapturedImage(null);
             setIsScanning(false);
             setCameraError(err.message || 'Failed to process face search');
             setScanStatus('Error');
@@ -266,7 +285,13 @@ const GuestAccessPage: React.FC = () => {
                 </div>
 
                 <div className="relative w-[320px] h-[320px] sm:w-[400px] sm:h-[400px] rounded-3xl overflow-hidden bg-slate-900 mb-8 border border-slate-700 shadow-2xl">
-                    {isScanning ? (
+                    {capturedImage ? (
+                        <img
+                            src={capturedImage}
+                            alt="Captured face"
+                            className="w-full h-full object-cover transform scale-x-[-1]"
+                        />
+                    ) : isScanning ? (
                         <video
                             ref={videoRef}
                             autoPlay

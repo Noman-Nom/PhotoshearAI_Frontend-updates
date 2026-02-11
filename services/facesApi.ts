@@ -93,7 +93,7 @@ export const facesApi = {
      * Create a face search job for guest access
      * Returns presigned URL to upload face image
      */
-    async createSearch(eventId: string, clientToken?: string): Promise<FaceSearchUploadResponse> {
+    async createSearch(eventId: string, clientToken?: string, guestName?: string, guestEmail?: string): Promise<FaceSearchUploadResponse> {
         const API_BASE_URL = getApiBaseUrl();
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -102,7 +102,11 @@ export const facesApi = {
             headers['X-Client-Token'] = clientToken;
         }
 
-        const res = await fetch(`${API_BASE_URL}/api/v1/faces/search?event_id=${eventId}`, {
+        const params = new URLSearchParams({ event_id: eventId });
+        if (guestName) params.append('guest_name', guestName);
+        if (guestEmail) params.append('guest_email', guestEmail);
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/faces/search?${params.toString()}`, {
             method: 'POST',
             headers,
             credentials: 'include',
