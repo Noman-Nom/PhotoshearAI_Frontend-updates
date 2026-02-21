@@ -8,6 +8,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { BillingProvider } from './contexts/BillingContext';
 import { BrandingProvider } from './contexts/BrandingContext';
 import { EventsProvider } from './contexts/EventsContext';
+import { PermissionsProvider } from './contexts/PermissionsContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { SessionExpiredModal } from './components/ui/SessionExpiredModal';
 
@@ -21,7 +22,7 @@ import DashboardPage from './app/dashboard/page';
 import CreateEventPage from './app/create-event/page';
 import MyEventsPage from './app/my-events/page';
 import EventDetailsPage from './app/event-details/page';
-import EmailSimulationPage from './app/email-simulation/page';
+
 import ShareEventPage from './app/share-event/page';
 import GuestAccessPage from './app/guest-access/page';
 import GuestGalleryPage from './app/guest-gallery/page';
@@ -75,7 +76,7 @@ const AppRoutes = () => {
 
       {/* Publicly accessible pages */}
       <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
-      <Route path="/email-simulation" element={<EmailSimulationPage />} />
+
 
       <Route path="/guest-access/:eventId" element={<GuestAccessPage />} />
       <Route path="/guest-gallery/:eventId" element={<GuestGalleryPage />} />
@@ -126,19 +127,21 @@ const App: React.FC = () => {
       <AuthProvider>
         <LanguageProvider>
           <TeamProvider>
-            <WorkspaceProvider>
-              <BillingProvider>
-                <BrandingProvider>
-                  <EventsProvider>
-                    <Router>
-                      <AppRoutes />
-                      {/* Global session expired modal */}
-                      <SessionExpiredModal />
-                    </Router>
-                  </EventsProvider>
-                </BrandingProvider>
-              </BillingProvider>
-            </WorkspaceProvider>
+            <PermissionsProvider>
+              <WorkspaceProvider>
+                <BillingProvider>
+                  <BrandingProvider>
+                    <EventsProvider>
+                      <Router>
+                        <AppRoutes />
+                        {/* Global session expired modal */}
+                        <SessionExpiredModal />
+                      </Router>
+                    </EventsProvider>
+                  </BrandingProvider>
+                </BillingProvider>
+              </WorkspaceProvider>
+            </PermissionsProvider>
           </TeamProvider>
         </LanguageProvider>
       </AuthProvider>

@@ -43,6 +43,7 @@ import { useTeam } from '../../contexts/TeamContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEvents } from '../../contexts/EventsContext';
+import { usePermissions } from '../../contexts/PermissionsContext';
 import { useNavigate } from 'react-router-dom';
 import { TeamMember, PendingMember } from '../../types';
 import { useTranslation } from '../../contexts/LanguageContext';
@@ -73,6 +74,7 @@ const TeamPage: React.FC = () => {
 
   const { activeWorkspace, workspaces } = useWorkspace();
   const { events } = useEvents();
+  const { can } = usePermissions();
 
   const [activeTab, setActiveTab] = useState<'Registered' | 'Pending'>('Registered');
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,12 +96,7 @@ const TeamPage: React.FC = () => {
     return roles.filter(r => r.level === 'studio' && !r.isSystem);
   }, [roles]);
 
-  const canAddMembers = useMemo(() => {
-    if (!user || !activeWorkspace) return false;
-    const currentUserProfile = members.find(m => m.email === user.email);
-    const role = currentUserProfile?.role || 'Studio Member';
-    return ['Owner', 'SuperAdmin / Owner', 'Account Manager', 'Studio Manager'].includes(role);
-  }, [user, members, activeWorkspace]);
+  const canAddMembers = can('member_add');
 
   const studioMembers = useMemo(() => {
     if (!activeWorkspace) return [];
@@ -293,9 +290,11 @@ const TeamPage: React.FC = () => {
               <h1 className="text-2xl md:text-3xl font-black text-slate-900 uppercase tracking-tight leading-none">{t('team_title')}</h1>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{activeWorkspace?.name.toUpperCase()} PERSONNEL DIRECTORY</p>
             </div>
-            <Button onClick={handleOpenAddModal} className="bg-[#0F172A] text-white font-black uppercase tracking-widest text-[11px] h-12 px-8 shadow-xl hover:bg-slate-800 w-full sm:w-auto rounded-xl transition-all active:scale-95">
-              <Plus size={18} className={isRTL ? "ml-2" : "mr-2"} strokeWidth={3} /> {t('add_member')}
-            </Button>
+            {canAddMembers && (
+              <Button onClick={handleOpenAddModal} className="bg-[#0F172A] text-white font-black uppercase tracking-widest text-[11px] h-12 px-8 shadow-xl hover:bg-slate-800 w-full sm:w-auto rounded-xl transition-all active:scale-95">
+                <Plus size={18} className={isRTL ? "ml-2" : "mr-2"} strokeWidth={3} /> {t('add_member')}
+              </Button>
+            )}
           </div>
           <div className={cn("flex flex-col md:flex-row items-center gap-4", isRTL && "md:flex-row-reverse")}>
             <div className={cn("bg-slate-100 p-1 rounded-xl flex w-full md:w-auto overflow-hidden", isRTL && "flex-row-reverse")}>
@@ -375,8 +374,8 @@ const TeamPage: React.FC = () => {
                               </div>
                             ) : (
                               <div className={cn("flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 transition-all", isRTL ? "justify-start" : "justify-end")}>
-                                {!isRegistered && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); success('Invitation resent successfully!'); await fetchInvitations(); } catch (err) { toastError('Failed to resend invitation. Please try again.'); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16} /></button>)}
-                                <button onClick={(e) => handleDelete(member, e)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Remove from Studio"><Trash2 size={16} /></button>
+                                {!isRegistered && can('member_add') && (<button onClick={async (e) => { e.stopPropagation(); try { await resendInvitation(member.id); success('Invitation resent successfully!'); await fetchInvitations(); } catch (err) { toastError('Failed to resend invitation. Please try again.'); } }} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('resend_label')}><RefreshCw size={16} /></button>)}
+                                {can('member_remove') && <button onClick={(e) => handleDelete(member, e)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Remove from Studio"><Trash2 size={16} /></button>}
                               </div>
                             )}
                           </td>
@@ -428,7 +427,7 @@ const TeamPage: React.FC = () => {
               {((selectedDetailMember as any).role === 'Owner' || (selectedDetailMember as any).role === 'SuperAdmin / Owner' || roles.find(r => r.name === selectedDetailMember.role)?.isSystem) ? (
                 <div className="w-full py-4 text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{t('protected_profile_label')}</div>
               ) : (
-                isEditingRole ? (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(false)} disabled={isUpdatingRole}>Cancel</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-blue-600 text-white" onClick={handleUpdateRole} isLoading={isUpdatingRole} disabled={isUpdatingRole}>Save Role</Button></>) : (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(true)}>{t('edit_access_btn')}</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-red-50 text-red-600" onClick={(e) => handleDelete(selectedDetailMember, e)}>{t('remove_member_btn')}</Button></>)
+                isEditingRole ? (<><Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(false)} disabled={isUpdatingRole}>Cancel</Button><Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-blue-600 text-white" onClick={handleUpdateRole} isLoading={isUpdatingRole} disabled={isUpdatingRole}>Save Role</Button></>) : (<>{can('member_manage') && <Button variant="outline" className="flex-1 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border-slate-200" onClick={() => setIsEditingRole(true)}>{t('edit_access_btn')}</Button>}{can('member_remove') && <Button className="flex-1 h-12 rounded-xl text-[10px] font-black bg-red-50 text-red-600" onClick={(e) => handleDelete(selectedDetailMember, e)}>{t('remove_member_btn')}</Button>}</>)
               )}
             </div>
           </div>

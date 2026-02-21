@@ -439,12 +439,7 @@ const BrandingPage: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <span className={cn(
-                                            "px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wide flex-shrink-0",
-                                            getStatusBadge(item.status)
-                                        )}>
-                                            {item.status}
-                                        </span>
+
                                     </div>
 
                                     {/* ... rest of mobile card ... */}
@@ -496,14 +491,14 @@ const BrandingPage: React.FC = () => {
                     {/* DESKTOP VIEW: Table (>= md) */}
                     <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         {/* Table Header */}
-                        <div className={cn("grid grid-cols-[50px_2fr_2fr_1.5fr_1fr_1fr_80px] gap-4 px-6 py-4 bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider items-center min-w-[800px] text-start", isRTL && "flex-row-reverse text-right")}>
+                        <div className={cn("grid grid-cols-[50px_2fr_2fr_1.5fr_1fr_80px] gap-4 px-6 py-4 bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider items-center min-w-[800px] text-start", isRTL && "flex-row-reverse text-right")}>
                             <div className="flex justify-center">
                                 <input type="checkbox" className="rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
                             </div>
                             <div>{t('brand_identity_header')}</div>
                             <div>{t('website_header')}</div>
                             <div>{t('socials_header')}</div>
-                            <div>{t('status_header')}</div>
+
                             <div>{t('last_updated_header')}</div>
                             <div className={isRTL ? "text-left" : "text-right"}>{t('actions_header')}</div>
                         </div>
@@ -520,7 +515,7 @@ const BrandingPage: React.FC = () => {
                                     filteredData.map((item) => (
                                         <div
                                             key={item.id}
-                                            className={cn("grid grid-cols-[50px_2fr_2fr_1.5fr_1fr_1fr_80px] gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors group text-start", isRTL && "flex-row-reverse text-right")}
+                                            className={cn("grid grid-cols-[50px_2fr_2fr_1.5fr_1fr_80px] gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors group text-start", isRTL && "flex-row-reverse text-right")}
                                         >
                                             <div className="flex justify-center">
                                                 <input
@@ -569,14 +564,7 @@ const BrandingPage: React.FC = () => {
                                                 )}
                                             </div>
 
-                                            <div>
-                                                <span className={cn(
-                                                    "px-2.5 py-1 rounded-full text-[11px] font-bold border uppercase tracking-wide",
-                                                    getStatusBadge(item.status)
-                                                )}>
-                                                    {item.status}
-                                                </span>
-                                            </div>
+
 
                                             <div className="text-sm text-slate-500">
                                                 {item.lastUpdated}
@@ -829,50 +817,7 @@ const BrandingPage: React.FC = () => {
                                         />
                                     </div>
 
-                                    {/* Status Selector */}
-                                    <div>
-                                        <label className={cn("text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 block", isRTL && "text-right")}>{t('status_header')}</label>
-                                        <div className="flex gap-2">
-                                            <button
-                                                className={cn(
-                                                    "flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors",
-                                                    formData.status === 'active'
-                                                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                                                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                                                )}
-                                                onClick={() => setFormData(prev => ({ ...prev, status: 'active' }))}
-                                            >
-                                                Active
-                                            </button>
-                                            <button
-                                                className={cn(
-                                                    "flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors",
-                                                    formData.status === 'draft'
-                                                        ? "bg-amber-50 text-amber-600 border-amber-200"
-                                                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                                                )}
-                                                onClick={() => setFormData(prev => ({ ...prev, status: 'draft' }))}
-                                            >
-                                                Draft
-                                            </button>
-                                            <button
-                                                className={cn(
-                                                    "flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors",
-                                                    formData.status === 'inactive'
-                                                        ? "bg-slate-100 text-slate-600 border-slate-300"
-                                                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                                                )}
-                                                onClick={() => setFormData(prev => ({ ...prev, status: 'inactive' }))}
-                                            >
-                                                Inactive
-                                            </button>
-                                        </div>
-                                        <p className="text-[10px] text-slate-400 mt-1.5 ml-1">
-                                            {formData.status === 'active' && "Visible and usable in events."}
-                                            {formData.status === 'draft' && "Configuration not yet complete."}
-                                            {formData.status === 'inactive' && "Archived and hidden from selection."}
-                                        </p>
-                                    </div>
+
 
                                     {/* Identity Controls: Opacity & Size */}
                                     <div className="pt-6 border-t border-slate-100 space-y-6">

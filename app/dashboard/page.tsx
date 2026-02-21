@@ -247,18 +247,6 @@ const DashboardPage: React.FC = () => {
             </div>
 
             <div className={`flex items-center ${isRTL ? 'space-x-reverse' : 'space-x-1'} md:space-x-4 text-slate-400`}>
-              {/* Email Sim Trigger */}
-              <button
-                onClick={() => navigate('/email-simulation', { state: { from: location.pathname + location.search } })}
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-all shadow-sm group mr-2"
-                title="Open Email Simulation"
-              >
-                <div className="relative">
-                  <Mail size={16} className="text-indigo-600" />
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-indigo-500 rounded-full animate-pulse border-2 border-indigo-50"></span>
-                </div>
-                <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest hidden sm:block">Email Sim</span>
-              </button>
 
               <button className="hover:text-slate-900 p-2 rounded-full hover:bg-slate-100 transition-colors"><Search size={20} /></button>
               <button className="hover:text-slate-900 p-2 rounded-full hover:bg-slate-100 transition-colors"><Bell size={20} /></button>

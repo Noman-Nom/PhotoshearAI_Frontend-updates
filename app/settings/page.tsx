@@ -586,13 +586,6 @@ const SettingsPage: React.FC = () => {
             </nav>
 
             <div className="flex items-center gap-2 md:gap-5">
-              <button
-                onClick={() => navigate('/email-simulation', { state: { from: location.pathname + location.search } })}
-                className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-all shadow-sm group"
-              >
-                <Mail size={18} className="text-indigo-600" />
-                <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest hidden lg:block">Email Sim</span>
-              </button>
 
               <div className="relative" ref={userMenuRef}>
                 <button

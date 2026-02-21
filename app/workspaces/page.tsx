@@ -73,6 +73,7 @@ import { Select } from '../../components/ui/Select';
 import { cn } from '../../utils/cn';
 import { loadGuestRegistry } from '../../constants';
 import { useEvents } from '../../contexts/EventsContext';
+import { usePermissions } from '../../contexts/PermissionsContext';
 import { formatBytes } from '../../utils/formatters';
 import { EMAIL_REGEX } from '../../utils/validators';
 import { GuestRecord, Role } from '../../types';
@@ -167,6 +168,7 @@ const WorkspacesPage: React.FC = () => {
   const { success, error: toastError } = useToast();
   const { workspaces, setActiveWorkspaceById, deleteWorkspace } = useWorkspace();
   const { events: allEvents } = useEvents();
+  const { can } = usePermissions();
   const { members, pendingMembers, roles, setRoles, inviteMember, updateMember, deleteMember, deletePendingMember, createRole, updateRole, deleteRole, fetchRoles, fetchMembers, fetchInvitations } = useTeam();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -448,7 +450,7 @@ const WorkspacesPage: React.FC = () => {
 
   const handleSendInvite = async () => {
     if (!inviteForm.firstName.trim() || !inviteForm.email.trim() || !EMAIL_REGEX.test(inviteForm.email.trim())) {
-      showToast({ message: 'Please enter a valid email address and first name.', type: 'error' });
+      toastError('Please enter a valid email address and first name.');
       return;
     }
 
@@ -461,7 +463,7 @@ const WorkspacesPage: React.FC = () => {
     }
 
     if (workspaceIds.length === 0) {
-      showToast({ message: 'Please select at least one studio for access.', type: 'error' });
+      toastError('Please select at least one studio for access.');
       return;
     }
 
@@ -646,16 +648,6 @@ const WorkspacesPage: React.FC = () => {
           </nav>
 
           <div className="flex items-center gap-2 md:gap-5">
-            <button
-              onClick={() => navigate('/email-simulation', { state: { from: location.pathname + location.search } })}
-              className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-all shadow-sm group"
-            >
-              <div className="relative">
-                <Mail size={18} className="text-indigo-600" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-indigo-500 rounded-full animate-pulse border-2 border-indigo-50"></span>
-              </div>
-              <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest hidden lg:block">Email Sim</span>
-            </button>
 
             <div className="hidden lg:block">
               <LanguageSwitcher />
@@ -675,9 +667,9 @@ const WorkspacesPage: React.FC = () => {
             {isAdmin && (
               <button
                 onClick={() => {
-                  if (activeTab === 'Roles') handleCreateNewRole();
-                  else if (activeTab === 'TeamMembers') { setEditingMemberId(null); setInviteForm({ firstName: '', lastName: '', email: '', roleId: '', selectedStudioIds: [] as string[], message: '' }); setIsAddMemberModalOpen(true); }
-                  else if (activeTab === 'WorkSpaces') navigate('/workspaces/create');
+                  if (activeTab === 'Roles') { if (can('role_add')) handleCreateNewRole(); }
+                  else if (activeTab === 'TeamMembers') { if (can('member_add')) { setEditingMemberId(null); setInviteForm({ firstName: '', lastName: '', email: '', roleId: '', selectedStudioIds: [] as string[], message: '' }); setIsAddMemberModalOpen(true); } }
+                  else if (activeTab === 'WorkSpaces') { if (can('ws_add')) navigate('/workspaces/create'); }
                 }}
                 className="w-9 h-9 md:w-11 md:h-11 rounded-lg md:rounded-xl bg-slate-100 flex items-center justify-center text-slate-900 hover:bg-slate-200 transition-all shadow-sm active:scale-95"
               >
@@ -768,7 +760,7 @@ const WorkspacesPage: React.FC = () => {
                   isAdmin={isAdmin}
                 />
               ))}
-              {isAdmin && (
+              {can('ws_add') && (
                 <button
                   onClick={() => navigate('/workspaces/create')}
                   className="border-2 border-dashed border-slate-200 rounded-3xl md:rounded-[3.5rem] flex flex-col items-center justify-center bg-white/50 hover:bg-white hover:border-slate-400 hover:shadow-xl transition-all aspect-auto sm:aspect-square py-12 sm:py-0 group"
@@ -1083,6 +1075,19 @@ const WorkspacesPage: React.FC = () => {
             </div>
             <div className="flex-1 bg-white overflow-y-auto custom-scrollbar p-6 md:p-10">
               <div className="max-w-3xl mx-auto space-y-3">
+                {(() => {
+                  const activeGroup = PERMISSIONS_LIST.find(g => g.id === activePermissionTab); const allPermIds = activeGroup?.permissions.map(p => p.id) || []; const allSelected = allPermIds.length > 0 && allPermIds.every(id => selectedPermissions.has(id)); const allGlobalPermIds = PERMISSIONS_LIST.flatMap(g => g.permissions.map(p => p.id)); const allGlobalSelected = allGlobalPermIds.length > 0 && allGlobalPermIds.every(id => selectedPermissions.has(id)); return (<>
+                    <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+                      <button onClick={() => { const next = new Set(selectedPermissions); if (allSelected) { allPermIds.forEach(id => next.delete(id)); } else { allPermIds.forEach(id => next.add(id)); } setSelectedPermissions(next); }} className={cn("flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all text-[11px] font-bold uppercase tracking-widest", allSelected ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white border-slate-100 text-slate-500 hover:border-slate-200 hover:bg-slate-50")}>
+                        <div className={cn("w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all", allSelected ? "bg-blue-600 border-blue-600" : "bg-white border-slate-200")}>{allSelected && <Check size={12} className="text-white stroke-[4px]" />}</div>
+                        Select All in {activeGroup?.category}
+                      </button>
+                      <button onClick={() => { const next = new Set(selectedPermissions); if (allGlobalSelected) { allGlobalPermIds.forEach(id => next.delete(id)); } else { allGlobalPermIds.forEach(id => next.add(id)); } setSelectedPermissions(next); }} className={cn("flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all", allGlobalSelected ? "text-blue-600 bg-blue-50" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50")}>
+                        {allGlobalSelected ? "Deselect All" : "Select All"}
+                      </button>
+                    </div>
+                  </>);
+                })()}
                 {PERMISSIONS_LIST.find(g => g.id === activePermissionTab)?.permissions.map((perm) => { const isSelected = selectedPermissions.has(perm.id); return (<div key={perm.id} onClick={() => togglePermission(perm.id)} className={cn("flex items-center p-5 rounded-2xl border-2 cursor-pointer transition-all group relative", isSelected ? "bg-blue-50/50 border-blue-200" : "bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50/50")}><div className="flex items-start gap-5 text-start w-full"><div className={cn("w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all shadow-sm", isSelected ? "bg-blue-600 border-blue-600" : "bg-white border-slate-200 group-hover:border-slate-300")}>{isSelected && <Check size={14} className="text-white stroke-[4px]" />}</div><div className="flex-1 min-w-0 pr-4"><p className={cn("text-[14px] font-bold uppercase tracking-tight mb-1", isSelected ? "text-blue-900" : "text-slate-800")}>{perm.label}</p><p className="text-[12px] text-slate-400 font-medium leading-relaxed">{perm.description}</p></div></div></div>); })}
               </div>
             </div>
@@ -1111,17 +1116,17 @@ const WorkspacesPage: React.FC = () => {
                 try {
                   if (memberToDelete?.isPending) {
                     await deletePendingMember(memberToDelete.id);
-                    showToast({ message: 'Invitation cancelled successfully!', type: 'success' });
+                    success('Invitation cancelled successfully!');
                     await fetchInvitations();
                   } else if (memberToDelete) {
                     await deleteMember(memberToDelete.id);
-                    showToast({ message: `${memberToDelete.firstName} ${memberToDelete.lastName} deleted successfully!`, type: 'success' });
+                    success(`${memberToDelete.firstName} ${memberToDelete.lastName} deleted successfully!`);
                     await fetchMembers();
                   }
                   setMemberToDelete(null);
                 } catch (error: any) {
                   console.error('Error deleting member:', error);
-                  showToast({ message: error.message || 'Failed to delete member. Please try again.', type: 'error' });
+                  toastError(error.message || 'Failed to delete member. Please try again.');
                 }
               }}
               className="w-full h-12 rounded-xl text-[11px] font-black uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 transition-colors"

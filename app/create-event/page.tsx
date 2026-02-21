@@ -81,7 +81,10 @@ const CreateEventPage: React.FC = () => {
   const [isBrandingEnabled, setIsBrandingEnabled] = useState(false);
   const [isPublicVisible, setIsPublicVisible] = useState(true);
   const [isSecurityEnabled, setIsSecurityEnabled] = useState(false);
-  const [pinCode, setPinCode] = useState('');
+  const [pinCode, setPinCode] = useState(() => {
+    // Auto-generate a 4-digit PIN for new events
+    return String(Math.floor(1000 + Math.random() * 9000));
+  });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
   const { activeItems: availableBranding, createItem } = useBranding();
@@ -242,6 +245,10 @@ const CreateEventPage: React.FC = () => {
       newErrors.title = "Event name is required";
     }
 
+    if (!date) {
+      newErrors.date = "Event date is required";
+    }
+
     if (!customerName.trim()) {
       newErrors.customerName = "Customer name is required";
     }
@@ -287,10 +294,6 @@ const CreateEventPage: React.FC = () => {
           event_date: date,
           event_type: type,
           description,
-          branding_enabled: isBrandingEnabled,
-          branding_id: isBrandingEnabled ? selectedBrandingId : undefined,
-          cover_url: finalCoverUrl,
-          customer_name: customerName,
           branding_enabled: isBrandingEnabled,
           branding_id: isBrandingEnabled ? selectedBrandingId : undefined,
           cover_url: finalCoverUrl,
@@ -419,8 +422,8 @@ const CreateEventPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <FieldLabel>{t('event_date')}</FieldLabel>
-                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="cursor-pointer" onClick={(e) => { try { if ('showPicker' in e.currentTarget) { (e.currentTarget as any).showPicker(); } } catch (err) { } }} />
+                    <FieldLabel>{t('event_date')} <span className="text-red-500">*</span></FieldLabel>
+                    <Input type="date" value={date} error={errors.date} onChange={(e) => { setDate(e.target.value); clearError('date'); }} className="cursor-pointer" onClick={(e) => { try { if ('showPicker' in e.currentTarget) { (e.currentTarget as any).showPicker(); } } catch (err) { } }} />
                   </div>
                   <div>
                     <FieldLabel>{t('event_type')}</FieldLabel>

@@ -1,13 +1,13 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Plus, 
-  Camera, 
-  Building, 
-  Heart, 
-  Star, 
+import {
+  ArrowLeft,
+  Plus,
+  Camera,
+  Building,
+  Heart,
+  Star,
   Cloud,
   Check,
   X,
@@ -55,21 +55,21 @@ const CreateWorkspacePage: React.FC = () => {
   const { user } = useAuth();
   const { members, updateMember } = useTeam();
   const { t, isRTL } = useTranslation();
-  
+
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [url, setUrl] = useState('');
   const [studioType, setStudioType] = useState('Wedding Photography');
   const [timezone, setTimezone] = useState('Pacific Standard Time (PST)');
   const [currency, setCurrency] = useState('USD ($)');
-  
+
   const [activeTheme, setActiveTheme] = useState('ocean');
   const [activeIcon, setActiveIcon] = useState('camera');
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoAssetUrl, setLogoAssetUrl] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  
+
   const [settings, setSettings] = useState({
     photoGallery: true,
     qrSharing: true,
@@ -113,11 +113,11 @@ const CreateWorkspacePage: React.FC = () => {
           }
         }
       } else if (user) {
-          // In Create Mode, ensure the owner is selected
-          const owner = members.find(m => m.email === user.email);
-          if (owner) {
-              setSelectedMemberIds(new Set([owner.id]));
-          }
+        // In Create Mode, ensure the owner is selected
+        const owner = members.find(m => m.email === user.email);
+        if (owner) {
+          setSelectedMemberIds(new Set([owner.id]));
+        }
       }
     };
 
@@ -156,7 +156,7 @@ const CreateWorkspacePage: React.FC = () => {
 
     // Store file for upload on save
     setLogoFile(file);
-    
+
     // Optionally upload immediately (uncomment if you want immediate upload)
     // setIsUploadingLogo(true);
     // try {
@@ -179,14 +179,14 @@ const CreateWorkspacePage: React.FC = () => {
     if (!name) return;
 
     // Check for duplicate name
-    const isDuplicate = workspaces.some(ws => 
-      ws.name.toLowerCase() === name.toLowerCase() && 
+    const isDuplicate = workspaces.some(ws =>
+      ws.name.toLowerCase() === name.toLowerCase() &&
       (!isEditMode || ws.id !== workspaceId)
     );
 
     if (isDuplicate) {
-        setNameError('A workspace with this name already exists. Please choose a different name.');
-        return;
+      setNameError('A workspace with this name already exists. Please choose a different name.');
+      return;
     }
 
     try {
@@ -210,7 +210,7 @@ const CreateWorkspacePage: React.FC = () => {
           setIsUploadingLogo(false);
         }
       }
-    
+
       const workspaceData = {
         name,
         description: `Workspace for ${studioType}`,
@@ -282,29 +282,29 @@ const CreateWorkspacePage: React.FC = () => {
   };
 
   const toggleMemberSelection = (id: string) => {
-      setSelectedMemberIds(prev => {
-          const next = new Set(prev);
-          if (next.has(id)) {
-              // Don't allow removing the owner/user from their own workspace being created
-              const member = members.find(m => m.id === id);
-              if (member?.isOwner || member?.email === user?.email || member?.role === 'Owner' || member?.role === 'SuperAdmin / Owner') return prev;
-              next.delete(id);
-          } else {
-              next.add(id);
-          }
-          return next;
-      });
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        // Don't allow removing the owner/user from their own workspace being created
+        const member = members.find(m => m.id === id);
+        if (member?.isOwner || member?.email === user?.email || member?.role === 'Owner' || member?.role === 'SuperAdmin / Owner') return prev;
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const filteredPool = useMemo(() => {
-    return members.filter(m => 
-        `${m.firstName} ${m.lastName}`.toLowerCase().includes(memberSearch.toLowerCase()) ||
-        m.email.toLowerCase().includes(memberSearch.toLowerCase())
+    return members.filter(m =>
+      `${m.firstName} ${m.lastName}`.toLowerCase().includes(memberSearch.toLowerCase()) ||
+      m.email.toLowerCase().includes(memberSearch.toLowerCase())
     );
   }, [members, memberSearch]);
 
   const selectedMembersList = useMemo(() => {
-      return members.filter(m => selectedMemberIds.has(m.id));
+    return members.filter(m => selectedMemberIds.has(m.id));
   }, [members, selectedMemberIds]);
 
   const companyUrlPrefix = user?.companyUrl ? `${user.companyUrl}.fotoshareai.com/` : 'fotoshare.com/';
@@ -312,8 +312,8 @@ const CreateWorkspacePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-32 md:pb-20 overflow-x-hidden">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 md:py-10">
-        
-        <button 
+
+        <button
           onClick={() => navigate('/workspaces')}
           className="flex items-center text-[10px] md:text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors mb-6 md:mb-8 group"
         >
@@ -331,14 +331,14 @@ const CreateWorkspacePage: React.FC = () => {
         </div>
 
         <div className="space-y-4 md:space-y-8">
-          <SectionCard 
-            title={t('section_basic_info')} 
+          <SectionCard
+            title={t('section_basic_info')}
             subtitle={t('section_basic_info_desc')}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="md:col-span-1">
-                <Input 
-                  label={t('workspace_name')} 
+                <Input
+                  label={t('workspace_name')}
                   placeholder={t('workspace_placeholder')}
                   value={name}
                   onChange={handleNameChange}
@@ -370,44 +370,44 @@ const CreateWorkspacePage: React.FC = () => {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mt-6">
-              <Select 
-                label={t('studio_type')} 
+              <Select
+                label={t('studio_type')}
                 value={studioType}
                 onChange={e => setStudioType(e.target.value)}
                 options={[
                   { label: t('all'), value: 'Wedding Photography' },
                   { label: 'Commercial', value: 'Commercial' },
                   { label: 'Portrait', value: 'Portrait' },
-                ]} 
+                ]}
                 className="font-bold"
               />
-              <Select 
-                label={t('timezone')} 
+              <Select
+                label={t('timezone')}
                 value={timezone}
                 onChange={e => setTimezone(e.target.value)}
                 options={[
                   { label: 'PST (UTC-8)', value: 'Pacific Standard Time (PST)' },
                   { label: 'EST (UTC-5)', value: 'Eastern Standard Time (EST)' },
-                ]} 
+                ]}
                 className="font-bold"
               />
-              <Select 
-                label={t('currency')} 
+              <Select
+                label={t('currency')}
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
                 options={[
                   { label: 'USD ($)', value: 'USD ($)' },
-                ]} 
+                ]}
                 className="font-bold"
               />
             </div>
           </SectionCard>
 
-          <SectionCard 
-            title={t('section_team_members')} 
+          <SectionCard
+            title={t('section_team_members')}
             subtitle={t('section_team_members_desc')}
             action={
-              <button 
+              <button
                 onClick={() => setIsMemberModalOpen(true)}
                 className="bg-[#0F172A] hover:bg-[#1E293B] text-white text-[9px] md:text-[10px] h-8 md:h-9 rounded-lg px-3 md:px-4 font-black uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-2"
               >
@@ -417,38 +417,38 @@ const CreateWorkspacePage: React.FC = () => {
             }
           >
             <div className="space-y-2 mt-4">
-               {selectedMembersList.map(member => (
-                 <div key={member.id} className="flex items-center justify-between p-3 md:p-4 bg-slate-50 border border-slate-100 rounded-xl group transition-all hover:bg-white hover:shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className={cn("w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center text-xs font-black shadow-sm flex-shrink-0", member.avatarColor || 'bg-slate-100 text-slate-500')}>
-                            {member.initials}
-                        </div>
-                        <div className="flex flex-col text-start">
-                            <div className="text-xs md:text-sm font-bold text-slate-900 leading-tight uppercase tracking-tight">{member.firstName} {member.lastName}</div>
-                            <div className="text-[9px] md:text-[10px] font-medium text-slate-400 uppercase tracking-wider">{member.role}</div>
-                        </div>
+              {selectedMembersList.map(member => (
+                <div key={member.id} className="flex items-center justify-between p-3 md:p-4 bg-slate-50 border border-slate-100 rounded-xl group transition-all hover:bg-white hover:shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className={cn("w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center text-xs font-black shadow-sm flex-shrink-0", member.avatarColor || 'bg-slate-100 text-slate-500')}>
+                      {member.initials}
                     </div>
-                    <div className="flex items-center gap-2">
-                        {member.role === 'Owner' || member.isOwner || member.role === 'SuperAdmin / Owner' ? (
-                            <span className="px-2 py-0.5 md:px-3 md:py-1 bg-slate-900 text-white text-[8px] md:text-[9px] font-black rounded-lg uppercase tracking-wider">Owner</span>
-                        ) : (
-                            <button 
-                                onClick={() => toggleMemberSelection(member.id)}
-                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                title="Remove member"
-                            >
-                                <UserMinus size={16} />
-                            </button>
-                        )}
+                    <div className="flex flex-col text-start">
+                      <div className="text-xs md:text-sm font-bold text-slate-900 leading-tight uppercase tracking-tight">{member.firstName} {member.lastName}</div>
+                      <div className="text-[9px] md:text-[10px] font-medium text-slate-400 uppercase tracking-wider">{member.role}</div>
                     </div>
-                 </div>
-               ))}
-               {selectedMembersList.length === 0 && (
-                   <div className="py-10 text-center text-slate-300 border-2 border-dashed border-slate-100 rounded-2xl">
-                       <Users className="mx-auto mb-2 opacity-20" size={32} />
-                       <p className="text-[10px] font-black uppercase tracking-widest">No team members assigned</p>
-                   </div>
-               )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {member.role === 'Owner' || member.isOwner || member.role === 'SuperAdmin / Owner' ? (
+                      <span className="px-2 py-0.5 md:px-3 md:py-1 bg-slate-900 text-white text-[8px] md:text-[9px] font-black rounded-lg uppercase tracking-wider">Owner</span>
+                    ) : (
+                      <button
+                        onClick={() => toggleMemberSelection(member.id)}
+                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        title="Remove member"
+                      >
+                        <UserMinus size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {selectedMembersList.length === 0 && (
+                <div className="py-10 text-center text-slate-300 border-2 border-dashed border-slate-100 rounded-2xl">
+                  <Users className="mx-auto mb-2 opacity-20" size={32} />
+                  <p className="text-[10px] font-black uppercase tracking-widest">No team members assigned</p>
+                </div>
+              )}
             </div>
           </SectionCard>
 
@@ -459,17 +459,17 @@ const CreateWorkspacePage: React.FC = () => {
                 <div className="flex flex-wrap gap-4">
                   {THEMES.map(theme => (
                     <div key={theme.id} className="flex flex-col items-center gap-1.5">
-                       <button
-                         onClick={() => setActiveTheme(theme.id)}
-                         className={cn(
-                           "w-10 h-10 md:w-12 md:h-12 rounded-xl transition-all relative overflow-hidden group shadow-sm",
-                           theme.color,
-                           activeTheme === theme.id ? "ring-2 ring-offset-2 ring-slate-900" : "hover:scale-105"
-                         )}
-                       >
-                         {activeTheme === theme.id && <div className="absolute inset-0 flex items-center justify-center bg-black/10"><Check size={18} className="text-white stroke-[3px]"/></div>}
-                       </button>
-                       <span className="text-[9px] font-bold text-slate-400 uppercase">{theme.name}</span>
+                      <button
+                        onClick={() => setActiveTheme(theme.id)}
+                        className={cn(
+                          "w-10 h-10 md:w-12 md:h-12 rounded-xl transition-all relative overflow-hidden group shadow-sm",
+                          theme.color,
+                          activeTheme === theme.id ? "ring-2 ring-offset-2 ring-slate-900" : "hover:scale-105"
+                        )}
+                      >
+                        {activeTheme === theme.id && <div className="absolute inset-0 flex items-center justify-center bg-black/10"><Check size={18} className="text-white stroke-[3px]" /></div>}
+                      </button>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">{theme.name}</span>
                     </div>
                   ))}
                 </div>
@@ -499,7 +499,7 @@ const CreateWorkspacePage: React.FC = () => {
 
             <div className="mt-8 md:mt-10 text-start">
               <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4 block">{t('studio_logo')}</label>
-              <div 
+              <div
                 onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-slate-200 rounded-2xl p-8 md:p-12 flex flex-col items-center justify-center text-center bg-white hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer group shadow-sm"
               >
@@ -520,126 +520,107 @@ const CreateWorkspacePage: React.FC = () => {
             </div>
           </SectionCard>
 
-          <SectionCard title={t('section_default_settings')}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 md:mb-10">
-              <Select label={t('timezone')} value={timezone} onChange={e => setTimezone(e.target.value)} options={[{ label: 'UTC-8 (Pacific)', value: 'Pacific Standard Time (PST)' }]} />
-              <Select label={t('currency')} value={currency} onChange={e => setCurrency(e.target.value)} options={[{ label: 'USD ($)', value: 'USD ($)' }]} />
-            </div>
-            <div className="space-y-4 text-start">
-              <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-2 block">{t('default_features')}</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <CheckboxItem label={t('feature_gallery')} checked={settings.photoGallery} onChange={() => toggleSetting('photoGallery')} />
-                <CheckboxItem label={t('feature_qr')} checked={settings.qrSharing} onChange={() => toggleSetting('qrSharing')} />
-                <CheckboxItem label={t('feature_download')} checked={settings.downloadProtection} onChange={() => toggleSetting('downloadProtection')} />
-                <CheckboxItem label={t('feature_comments')} checked={settings.clientComments} onChange={() => toggleSetting('clientComments')} />
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-
-        <div className="mt-12 pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <button 
-            onClick={() => navigate('/workspaces')}
-            className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 px-6 h-11 transition-colors"
-          >
-            {t('cancel')}
-          </button>
-          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-            <Button variant="outline" className="h-12 border-slate-200 text-slate-700 font-black rounded-xl text-[10px] uppercase tracking-widest px-8 hover:bg-slate-50">
-                {t('save_draft')}
-            </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={isUploadingLogo}
-              className="bg-[#0F172A] hover:bg-[#1E293B] text-white h-12 rounded-xl shadow-lg shadow-slate-200 font-black text-[10px] uppercase tracking-widest px-10 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          <div className="mt-12 pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <button
+              onClick={() => navigate('/workspaces')}
+              className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 px-6 h-11 transition-colors"
             >
-              {isUploadingLogo ? 'Uploading Logo...' : (isEditMode ? t('update_studio') : t('create_studio'))}
-            </Button>
+              {t('cancel')}
+            </button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <Button
+                onClick={handleSave}
+                disabled={isUploadingLogo}
+                className="bg-[#0F172A] hover:bg-[#1E293B] text-white h-12 rounded-xl shadow-lg shadow-slate-200 font-black text-[10px] uppercase tracking-widest px-10 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUploadingLogo ? 'Uploading Logo...' : (isEditMode ? t('update_studio') : t('create_studio'))}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Member Selection Modal */}
-      <Modal
-        isOpen={isMemberModalOpen}
-        onClose={() => setIsMemberModalOpen(false)}
-        title="Organization Pool"
-        className="max-w-2xl w-full"
-        contentClassName="p-0 overflow-hidden"
-      >
-        <div className="bg-white flex flex-col h-[60vh]">
+        {/* Member Selection Modal */}
+        <Modal
+          isOpen={isMemberModalOpen}
+          onClose={() => setIsMemberModalOpen(false)}
+          title="Organization Pool"
+          className="max-w-2xl w-full"
+          contentClassName="p-0 overflow-hidden"
+        >
+          <div className="bg-white flex flex-col h-[60vh]">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                <div className="relative group">
-                    <Search className="absolute start-3.5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition-colors" size={18} />
-                    <input 
-                        type="text"
-                        placeholder="Search global members..."
-                        value={memberSearch}
-                        onChange={e => setMemberSearch(e.target.value)}
-                        className="w-full ps-11 pe-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:border-slate-900 focus:ring-4 focus:ring-slate-900/5 transition-all outline-none text-start shadow-sm"
-                    />
-                </div>
+              <div className="relative group">
+                <Search className="absolute start-3.5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition-colors" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search global members..."
+                  value={memberSearch}
+                  onChange={e => setMemberSearch(e.target.value)}
+                  className="w-full ps-11 pe-4 py-3.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:border-slate-900 focus:ring-4 focus:ring-slate-900/5 transition-all outline-none text-start shadow-sm"
+                />
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                {filteredPool.length === 0 ? (
-                    <div className="py-20 text-center text-slate-400 opacity-60">
-                        <Users size={48} className="mx-auto mb-2" />
-                        <p className="text-[11px] font-black uppercase tracking-widest">No members match your search</p>
+              {filteredPool.length === 0 ? (
+                <div className="py-20 text-center text-slate-400 opacity-60">
+                  <Users size={48} className="mx-auto mb-2" />
+                  <p className="text-[11px] font-black uppercase tracking-widest">No members match your search</p>
+                </div>
+              ) : filteredPool.map(member => {
+                const isSelected = selectedMemberIds.has(member.id);
+                const isOwnerMember = member.role === 'Owner' || member.isOwner || member.role === 'SuperAdmin / Owner' || member.email === user?.email;
+
+                return (
+                  <div
+                    key={member.id}
+                    onClick={() => toggleMemberSelection(member.id)}
+                    className={cn(
+                      "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
+                      isSelected ? "bg-blue-50/30 border-blue-100" : "bg-white border-slate-50 hover:border-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-4 text-start">
+                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-black shadow-sm", member.avatarColor || 'bg-slate-100 text-slate-500')}>
+                        {member.initials}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-bold text-slate-900 truncate uppercase tracking-tight">{member.firstName} {member.lastName}</h4>
+                        <p className="text-[10px] text-slate-400 font-medium truncate uppercase tracking-widest">{member.role}</p>
+                      </div>
                     </div>
-                ) : filteredPool.map(member => {
-                    const isSelected = selectedMemberIds.has(member.id);
-                    const isOwnerMember = member.role === 'Owner' || member.isOwner || member.role === 'SuperAdmin / Owner' || member.email === user?.email;
-                    
-                    return (
-                        <div 
-                            key={member.id}
-                            onClick={() => toggleMemberSelection(member.id)}
-                            className={cn(
-                                "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
-                                isSelected ? "bg-blue-50/30 border-blue-100" : "bg-white border-slate-50 hover:border-slate-200"
-                            )}
-                        >
-                            <div className="flex items-center gap-4 text-start">
-                                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-black shadow-sm", member.avatarColor || 'bg-slate-100 text-slate-500')}>
-                                    {member.initials}
-                                </div>
-                                <div className="min-w-0">
-                                    <h4 className="text-sm font-bold text-slate-900 truncate uppercase tracking-tight">{member.firstName} {member.lastName}</h4>
-                                    <p className="text-[10px] text-slate-400 font-medium truncate uppercase tracking-widest">{member.role}</p>
-                                </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-2">
-                                {isOwnerMember ? (
-                                    <div className="px-3 py-1 bg-slate-900 text-white text-[8px] font-black uppercase rounded-lg border border-slate-900 tracking-widest">
-                                        Owner
-                                    </div>
-                                ) : isSelected ? (
-                                    <div className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase rounded-lg border border-emerald-100 tracking-widest flex items-center gap-1">
-                                        <Check size={10} strokeWidth={4} /> Selected
-                                    </div>
-                                ) : (
-                                    <div className="px-3 py-1 bg-white text-slate-400 text-[8px] font-black uppercase rounded-lg border border-slate-200 tracking-widest hover:border-slate-900 hover:text-slate-900 transition-colors">
-                                        Add
-                                    </div>
-                                )}
-                            </div>
+
+                    <div className="flex items-center gap-2">
+                      {isOwnerMember ? (
+                        <div className="px-3 py-1 bg-slate-900 text-white text-[8px] font-black uppercase rounded-lg border border-slate-900 tracking-widest">
+                          Owner
                         </div>
-                    );
-                })}
+                      ) : isSelected ? (
+                        <div className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase rounded-lg border border-emerald-100 tracking-widest flex items-center gap-1">
+                          <Check size={10} strokeWidth={4} /> Selected
+                        </div>
+                      ) : (
+                        <div className="px-3 py-1 bg-white text-slate-400 text-[8px] font-black uppercase rounded-lg border border-slate-200 tracking-widest hover:border-slate-900 hover:text-slate-900 transition-colors">
+                          Add
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="p-6 border-t border-slate-100 bg-slate-50/30 flex justify-end">
-                <Button 
-                    onClick={() => setIsMemberModalOpen(false)}
-                    className="bg-[#0F172A] px-10 h-11 text-[11px] font-black uppercase tracking-[0.2em] rounded-xl shadow-lg"
-                >
-                    Done
-                </Button>
+              <Button
+                onClick={() => setIsMemberModalOpen(false)}
+                className="bg-[#0F172A] px-10 h-11 text-[11px] font-black uppercase tracking-[0.2em] rounded-xl shadow-lg"
+              >
+                Done
+              </Button>
             </div>
-        </div>
-      </Modal>
+          </div>
+        </Modal>
+      </div>
     </div>
   );
 };
@@ -658,22 +639,22 @@ const SectionCard = ({ title, subtitle, action, children }: any) => (
 );
 
 const CheckboxItem = ({ label, checked, onChange }: { label: string, checked: boolean, onChange: () => void }) => {
-    return (
-        <div className="flex items-center gap-3 cursor-pointer group p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition-all text-start" onClick={onChange}>
-            <div className={cn(
-                "w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center",
-                checked ? "bg-slate-900 border-slate-900" : "bg-white border-slate-200 group-hover:border-slate-400"
-            )}>
-                {checked && <Check size={12} className="text-white" strokeWidth={4} />}
-            </div>
-            <span className={cn(
-                "text-[10px] md:text-xs font-black transition-colors uppercase tracking-tight",
-                checked ? "text-slate-900" : "text-slate-400 group-hover:text-slate-600"
-            )}>
-                {label}
-            </span>
-        </div>
-    );
+  return (
+    <div className="flex items-center gap-3 cursor-pointer group p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition-all text-start" onClick={onChange}>
+      <div className={cn(
+        "w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center",
+        checked ? "bg-slate-900 border-slate-900" : "bg-white border-slate-200 group-hover:border-slate-400"
+      )}>
+        {checked && <Check size={12} className="text-white" strokeWidth={4} />}
+      </div>
+      <span className={cn(
+        "text-[10px] md:text-xs font-black transition-colors uppercase tracking-tight",
+        checked ? "text-slate-900" : "text-slate-400 group-hover:text-slate-600"
+      )}>
+        {label}
+      </span>
+    </div>
+  );
 };
 
 export default CreateWorkspacePage;

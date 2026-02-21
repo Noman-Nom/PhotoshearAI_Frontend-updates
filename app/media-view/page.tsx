@@ -36,7 +36,7 @@ import {
 import { cn } from '../../utils/cn';
 import { useEvents } from '../../contexts/EventsContext';
 import { collectionsApi, mediaApi, commentsApi, CommentResponse } from '../../services/eventsApi';
-import { SHARED_EVENTS, SharedEvent, SharedMediaItem, saveEventsToStorage, addSimulatedEmail, incrementGuestDownloadCount } from '../../constants';
+import { SHARED_EVENTS, SharedEvent, SharedMediaItem, saveEventsToStorage, incrementGuestDownloadCount } from '../../constants';
 import { brandingApi } from '../../services/brandingApi';
 import { formatBytes } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
@@ -538,15 +538,6 @@ const MediaViewPage: React.FC<MediaViewPageProps> = ({ viewContext }) => {
         }));
       } else {
         setComments(prev => prev.map(c => c.id === optimisticComment.id ? realComment : c));
-      }
-
-      // Trigger notification if customer is commenting
-      if (viewContext === 'client' && event) {
-        addSimulatedEmail({
-          to: user?.email || 'studio-owner@example.com',
-          subject: `New Feedback: ${event.title}`,
-          body: `Customer "${authorName}" has added a comment on a photo in event "${event.title}".`
-        });
       }
     } catch (error) {
       console.error('Failed to create comment:', error);

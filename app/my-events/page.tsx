@@ -22,9 +22,12 @@ import { formatBytes } from '../../utils/formatters';
 import { useTeam } from '../../contexts/TeamContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useEvents } from '../../contexts/EventsContext';
+import { usePermissions } from '../../contexts/PermissionsContext';
 import { TeamMember } from '../../types';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { SkeletonEventCard } from '../../components/ui/Skeleton';
+import { collaboratorsApi } from '../../services/eventsApi';
+import { useToast } from '../../contexts/ToastContext';
 
 const MyEventsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -32,6 +35,8 @@ const MyEventsPage: React.FC = () => {
   const { members, updateMember } = useTeam();
   const { activeWorkspace } = useWorkspace();
   const { events: apiEvents, isLoading, deleteEvent, refreshEvents } = useEvents();
+  const { can } = usePermissions();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const [filter, setFilter] = useState<'All' | 'Published' | 'Draft'>('All');
   const [viewMode, setViewMode] = useState<'Grid' | 'List'>('Grid');
@@ -101,16 +106,26 @@ const MyEventsPage: React.FC = () => {
 
   // NOTE: Collaborator add/remove will need to be updated to use collaboratorsApi
   // For now, these are placeholder implementations that log the action
-  const handleAddCollaborator = (member: TeamMember) => {
+  const handleAddCollaborator = async (member: TeamMember) => {
     if (!targetCollaboratorEvent) return;
-    console.log('TODO: Add collaborator via API', member.id, 'to event', targetCollaboratorEvent.id);
-    // TODO: Use collaboratorsApi.add(targetCollaboratorEvent.id, member.id)
+    try {
+      await collaboratorsApi.add(targetCollaboratorEvent.id, member.id);
+      toastSuccess(`${member.firstName} added to event`);
+      await refreshEvents();
+    } catch (err: any) {
+      toastError(err.message || 'Failed to add team member');
+    }
   };
 
-  const handleRemoveCollaborator = (member: TeamMember) => {
+  const handleRemoveCollaborator = async (member: TeamMember) => {
     if (!targetCollaboratorEvent) return;
-    console.log('TODO: Remove collaborator via API', member.id, 'from event', targetCollaboratorEvent.id);
-    // TODO: Use collaboratorsApi.remove(targetCollaboratorEvent.id, member.id)
+    try {
+      await collaboratorsApi.remove(targetCollaboratorEvent.id, member.id);
+      toastSuccess(`${member.firstName} removed from event`);
+      await refreshEvents();
+    } catch (err: any) {
+      toastError(err.message || 'Failed to remove team member');
+    }
   };
 
   const handleUploadClick = (id: string) => {
@@ -135,9 +150,11 @@ const MyEventsPage: React.FC = () => {
               <h1 className="text-lg md:text-xl font-bold text-slate-900">{t('my_events_title')}</h1>
               <p className="text-xs md:text-sm text-slate-500">{t('my_events_subtitle')}</p>
             </div>
-            <Button onClick={() => navigate('/create-event')} className="bg-[#0F172A] text-white font-bold h-10 md:h-11 px-4 md:px-6 shadow-md hover:bg-slate-800 text-sm w-full sm:w-auto">
-              <Plus className={isRTL ? "ml-2" : "mr-2"} size={18} strokeWidth={3} /> {t('add_new_event')}
-            </Button>
+            {can('event_add') && (
+              <Button onClick={() => navigate('/create-event')} className="bg-[#0F172A] text-white font-bold h-10 md:h-11 px-4 md:px-6 shadow-md hover:bg-slate-800 text-sm w-full sm:w-auto">
+                <Plus className={isRTL ? "ml-2" : "mr-2"} size={18} strokeWidth={3} /> {t('add_new_event')}
+              </Button>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 md:gap-4">

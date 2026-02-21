@@ -33,6 +33,7 @@ export interface EventResponse {
     branding_id?: string;
     cover_url?: string;
     pin_required: boolean;
+    pin_code?: string;
     total_photos: number;
     total_videos: number;
     total_size_bytes: number;

@@ -108,4 +108,12 @@ export const teamApi = {
   delete: async (memberId: string): Promise<void> => {
     await api.delete(`/api/v1/team/members/${memberId}`, true);
   },
+
+  /**
+   * Get current user's permissions
+   * GET /api/v1/team/me/permissions
+   */
+  getMyPermissions: async (): Promise<{ is_owner: boolean; permissions: string[] }> => {
+    return api.get('/api/v1/team/me/permissions', true);
+  },
 };

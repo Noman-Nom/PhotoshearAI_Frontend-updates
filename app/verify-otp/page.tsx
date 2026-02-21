@@ -12,7 +12,7 @@ const VerifyOtpPage: React.FC = () => {
   const { verifyOtp, resendOtp, pendingUserEmail, status } = useAuth();
   const { t, isRTL } = useTranslation();
   const navigate = useNavigate();
-  
+
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -55,6 +55,24 @@ const VerifyOtpPage: React.FC = () => {
     }
     if (e.key === 'Enter' && otp.join('').length === 6) {
       handleVerify();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    const newOtp = [...otp];
+    for (let i = 0; i < 6; i++) {
+      newOtp[i] = pasted[i] || '';
+    }
+    setOtp(newOtp);
+    setError(null);
+    const focusIdx = Math.min(pasted.length, 5);
+    inputRefs.current[focusIdx]?.focus();
+    if (pasted.length === 6) {
+      // Auto-verify when full OTP is pasted
+      setTimeout(() => handleVerify(), 100);
     }
   };
 
@@ -104,6 +122,7 @@ const VerifyOtpPage: React.FC = () => {
               value={digit}
               onChange={(e) => handleOtpChange(idx, e.target.value)}
               onKeyDown={(e) => handleKeyDown(idx, e)}
+              onPaste={handlePaste}
               className={cn(
                 "w-10 h-12 sm:w-12 sm:h-14 rounded-xl border text-center text-xl font-bold transition-all focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent",
                 error ? "border-red-300 bg-red-50 text-red-600" : "border-slate-200 bg-slate-50 text-slate-900"
@@ -119,7 +138,7 @@ const VerifyOtpPage: React.FC = () => {
         )}
 
         <div className="space-y-4">
-          <Button 
+          <Button
             className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-white h-12 rounded-xl font-bold shadow-lg"
             onClick={handleVerify}
             isLoading={status === 'LOADING'}
@@ -131,7 +150,7 @@ const VerifyOtpPage: React.FC = () => {
           <div className="flex flex-col items-center gap-3">
             <p className="text-sm text-slate-500">
               Didn't receive the code?{' '}
-              <button 
+              <button
                 onClick={handleResend}
                 disabled={resendCooldown > 0}
                 className={cn(
@@ -142,8 +161,8 @@ const VerifyOtpPage: React.FC = () => {
                 {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
               </button>
             </p>
-            
-            <button 
+
+            <button
               onClick={() => navigate('/signup')}
               className="flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-slate-600 transition-colors"
             >
