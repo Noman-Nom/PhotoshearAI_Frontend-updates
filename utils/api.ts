@@ -81,8 +81,8 @@ export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 export class ApiError extends Error {
   status: number;
-  details: any;
-  constructor(message: string, status: number, details?: any) {
+  details: unknown;
+  constructor(message: string, status: number, details?: unknown) {
     super(message);
     this.status = status;
     this.details = details;
@@ -112,13 +112,18 @@ const handleResponse = async (res: Response) => {
     dispatchSessionExpired();
   }
 
-  let payload: any = null;
+  let payload: Record<string, unknown> | null = null;
   try {
     payload = await res.json();
   } catch {
     payload = null;
   }
-  const message = payload?.error?.message || payload?.detail || res.statusText || 'Request failed';
+  const errorDetail = payload?.error as Record<string, unknown> | undefined;
+  const message =
+    (errorDetail?.message as string | undefined) ||
+    (payload?.detail as string | undefined) ||
+    res.statusText ||
+    'Request failed';
   throw new ApiError(message, res.status, payload);
 };
 
@@ -129,14 +134,14 @@ export const api = {
       headers: buildHeaders(false, includeAuth),
       credentials: 'include'
     }).then(handleResponse),
-  post: (path: string, body?: any, includeAuth = true) =>
+  post: (path: string, body?: unknown, includeAuth = true) =>
     fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
       headers: buildHeaders(true, includeAuth),
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'include'
     }).then(handleResponse),
-  put: (path: string, body?: any, includeAuth = true) =>
+  put: (path: string, body?: unknown, includeAuth = true) =>
     fetch(`${API_BASE_URL}${path}`, {
       method: 'PUT',
       headers: buildHeaders(true, includeAuth),
@@ -149,7 +154,7 @@ export const api = {
       headers: buildHeaders(false, includeAuth),
       credentials: 'include'
     }).then(handleResponse),
-  postBlob: (path: string, body?: any, includeAuth = true) =>
+  postBlob: (path: string, body?: unknown, includeAuth = true) =>
     fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
       headers: buildHeaders(true, includeAuth),

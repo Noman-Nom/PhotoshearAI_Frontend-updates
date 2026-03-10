@@ -19,8 +19,21 @@ export interface PersonListResponse {
     page_size: number;
 }
 
+/** Raw media item returned by the person photos API endpoint */
+export interface PersonPhotoItem {
+    media_id: string;
+    face_id?: string;
+    media_type: 'photo' | 'video';
+    media_url: string;
+    thumbnail_url?: string;
+    filename: string;
+    size_bytes: number;
+    created_at?: string;
+    processing_status?: 'pending' | 'processing' | 'completed' | 'failed';
+}
+
 export interface PersonPhotosResponse {
-    items: any[]; // We'll map this to SharedMediaItem
+    items: PersonPhotoItem[];
     total: number;
     page: number;
     page_size: number;
