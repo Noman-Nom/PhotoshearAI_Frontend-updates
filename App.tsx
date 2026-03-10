@@ -107,8 +107,6 @@ const AppRoutes = () => {
 
         <Route path="/share-event/:eventId" element={<ShareEventPage />} />
 
-        <Route path="/share-event/:eventId" element={<ShareEventPage />} />
-
         <Route path="/team" element={<TeamPage />} />
         <Route path="/branding" element={<BrandingPage />} />
         <Route path="/branding/add" element={<AddBrandingPage />} />
