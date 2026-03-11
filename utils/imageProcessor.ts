@@ -21,6 +21,8 @@ interface BrandingConfig {
     logoSize?: number;
     brandOpacity?: number;
     brandSize?: number;
+    // Dynamic API fields not covered by the named properties above
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
 }
 
