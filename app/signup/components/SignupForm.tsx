@@ -11,6 +11,16 @@ import { PasswordInput } from '../../../components/ui/PasswordInput';
 import { Select } from '../../../components/ui/Select';
 import { COUNTRIES } from '../../../constants';
 import { cn } from '../../../utils/cn';
+import { motion } from 'framer-motion';
+
+const fieldVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.07, duration: 0.35, ease: 'easeOut' },
+  }),
+};
 
 export const SignupForm: React.FC = () => {
   const { register: registerAuth } = useAuth();
@@ -70,137 +80,164 @@ export const SignupForm: React.FC = () => {
 
   const countryOptions = COUNTRIES.map(c => ({ label: c.name, value: c.code }));
 
+  const inputClass = "bg-white border-slate-200 focus:ring-indigo-400 focus:border-indigo-300 rounded-xl shadow-sm transition-shadow hover:shadow-md";
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {formError && (
-        <div className="p-3 rounded-md bg-red-50 text-red-600 text-sm text-start font-bold border border-red-100">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="p-3.5 rounded-xl bg-red-50 text-red-600 text-sm text-start font-semibold border border-red-100 shadow-sm"
+        >
           {formError}
-        </div>
+        </motion.div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input
-          label={t('first_name')}
-          placeholder={t('first_name')}
-          error={errors.firstName?.message}
-          {...register('firstName')}
-          className="bg-white border-slate-200 focus:ring-slate-900"
-        />
-        <Input
-          label={t('last_name')}
-          placeholder={t('last_name')}
-          error={errors.lastName?.message}
-          {...register('lastName')}
-          className="bg-white border-slate-200 focus:ring-slate-900"
-        />
-      </div>
+      <motion.div custom={0} variants={fieldVariants} initial="hidden" animate="visible">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label={t('first_name')}
+            placeholder={t('first_name')}
+            error={errors.firstName?.message}
+            {...register('firstName')}
+            className={inputClass}
+          />
+          <Input
+            label={t('last_name')}
+            placeholder={t('last_name')}
+            error={errors.lastName?.message}
+            {...register('lastName')}
+            className={inputClass}
+          />
+        </div>
+      </motion.div>
 
-      <Input
-        label={t('company_name')}
-        placeholder={t('company_name')}
-        error={errors.companyName?.message}
-        {...register('companyName')}
-        className="bg-white border-slate-200 focus:ring-slate-900"
-      />
+      <motion.div custom={1} variants={fieldVariants} initial="hidden" animate="visible">
+        <Input
+          label={t('company_name')}
+          placeholder={t('company_name')}
+          error={errors.companyName?.message}
+          {...register('companyName')}
+          className={inputClass}
+        />
+      </motion.div>
 
-      <div className="space-y-1.5 text-start">
+      <motion.div custom={2} variants={fieldVariants} initial="hidden" animate="visible" className="space-y-1.5 text-start">
         <label className="text-sm font-medium leading-none text-slate-700">{t('studio_url')}</label>
-        <div className={cn("relative flex", isRTL && "flex-row-reverse")}>
+        <div className={cn(
+          "relative flex rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-300 transition-all overflow-hidden",
+          isRTL && "flex-row-reverse",
+          errors.url && "border-red-400 focus-within:ring-red-400"
+        )}>
           <input
             type="text"
             dir="ltr"
             className={cn(
-              "flex h-11 w-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all duration-200",
-              isRTL ? "rounded-r-md text-right border-l-0" : "rounded-l-md text-left border-r-0",
-              errors.url && "border-red-500 focus:ring-red-500"
+              "flex h-11 w-full bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all duration-200 border-0",
+              isRTL ? "text-right" : "text-left",
             )}
             placeholder={t('studio_url_placeholder')}
             {...register('url')}
           />
           <div className={cn(
-            "flex items-center justify-center px-3 border border-slate-200 bg-slate-50 text-slate-500 text-sm font-mono whitespace-nowrap",
-            isRTL ? "rounded-l-md" : "rounded-r-md"
+            "flex items-center justify-center px-3 bg-slate-50 text-slate-500 text-sm font-mono whitespace-nowrap border-l border-slate-200",
+            isRTL && "border-l-0 border-r border-slate-200"
           )}>
             .fotoshareai.com
           </div>
         </div>
         {errors.url && <p className="text-sm font-medium text-red-500 mt-1">{errors.url.message}</p>}
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select
-          label={t('country')}
-          options={countryOptions}
-          error={errors.country?.message}
-          {...register('country')}
-          className="bg-white border-slate-200 focus:ring-slate-900"
-        />
+      <motion.div custom={3} variants={fieldVariants} initial="hidden" animate="visible">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Select
+            label={t('country')}
+            options={countryOptions}
+            error={errors.country?.message}
+            {...register('country')}
+            className={inputClass}
+          />
 
-        <div className="space-y-1.5 text-start">
-          <label className="text-sm font-medium leading-none text-slate-700">{t('phone')}</label>
-          <div className={cn("relative flex", isRTL && "flex-row-reverse")}>
+          <div className="space-y-1.5 text-start">
+            <label className="text-sm font-medium leading-none text-slate-700">{t('phone')}</label>
             <div className={cn(
-              "flex items-center justify-center px-3 border border-slate-200 bg-slate-50 text-slate-500 text-sm font-mono whitespace-nowrap",
-              isRTL ? "rounded-r-md border-l-0" : "rounded-l-md border-r-0"
+              "relative flex rounded-xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-300 transition-all overflow-hidden",
+              isRTL && "flex-row-reverse",
+              errors.phone && "border-red-400 focus-within:ring-red-400"
             )}>
-              {selectedCountryDialCode}
+              <div className={cn(
+                "flex items-center justify-center px-3 bg-slate-50 text-slate-500 text-sm font-mono whitespace-nowrap border-r border-slate-200",
+                isRTL && "border-r-0 border-l border-slate-200"
+              )}>
+                {selectedCountryDialCode}
+              </div>
+              <input
+                type="tel"
+                dir="ltr"
+                className={cn(
+                  "flex h-11 w-full bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all duration-200 border-0",
+                  isRTL ? "text-right" : "text-left",
+                )}
+                placeholder="555-0123"
+                {...register('phone')}
+              />
             </div>
-            <input
-              type="tel"
-              dir="ltr"
-              className={cn(
-                "flex h-11 w-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all duration-200",
-                isRTL ? "rounded-l-md text-right" : "rounded-r-md text-left",
-                errors.phone && "border-red-500 focus:ring-red-500"
-              )}
-              placeholder="555-0123"
-              {...register('phone')}
-            />
+            {errors.phone && <p className="text-sm font-medium text-red-500 mt-1">{errors.phone.message}</p>}
           </div>
-          {errors.phone && <p className="text-sm font-medium text-red-500 mt-1">{errors.phone.message}</p>}
         </div>
-      </div>
+      </motion.div>
 
-      <Input
-        label={t('email')}
-        type="email"
-        placeholder={t('email_placeholder')}
-        error={errors.email?.message}
-        {...register('email')}
-        className="bg-white border-slate-200 focus:ring-slate-900"
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <PasswordInput
-          label={t('password')}
-          placeholder="••••••••"
-          error={errors.password?.message}
-          {...register('password')}
-          className="bg-white border-slate-200 focus:ring-slate-900"
+      <motion.div custom={4} variants={fieldVariants} initial="hidden" animate="visible">
+        <Input
+          label={t('email')}
+          type="email"
+          placeholder={t('email_placeholder')}
+          error={errors.email?.message}
+          {...register('email')}
+          className={inputClass}
         />
-        <PasswordInput
-          label={t('confirm_password')}
-          placeholder="••••••••"
-          error={errors.confirmPassword?.message}
-          {...register('confirmPassword')}
-          className="bg-white border-slate-200 focus:ring-slate-900"
-        />
-      </div>
+      </motion.div>
 
-      <Button
-        type="submit"
-        className="w-full mt-2 bg-[#0F172A] hover:bg-[#1E293B] text-white py-2.5 h-11"
-        isLoading={isSubmitting}
-      >
-        {t('create_account')}
-      </Button>
+      <motion.div custom={5} variants={fieldVariants} initial="hidden" animate="visible">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <PasswordInput
+            label={t('password')}
+            placeholder="••••••••"
+            error={errors.password?.message}
+            {...register('password')}
+            className={inputClass}
+          />
+          <PasswordInput
+            label={t('confirm_password')}
+            placeholder="••••••••"
+            error={errors.confirmPassword?.message}
+            {...register('confirmPassword')}
+            className={inputClass}
+          />
+        </div>
+      </motion.div>
 
-      <div className="text-center text-sm text-slate-600 mt-4">
+      <motion.div custom={6} variants={fieldVariants} initial="hidden" animate="visible">
+        <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
+          <Button
+            type="submit"
+            className="w-full mt-2 text-white py-2.5 h-11 rounded-xl font-semibold shadow-lg shadow-indigo-100 transition-all"
+            style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' }}
+            isLoading={isSubmitting}
+          >
+            {t('create_account')}
+          </Button>
+        </motion.div>
+      </motion.div>
+
+      <motion.div custom={7} variants={fieldVariants} initial="hidden" animate="visible" className="text-center text-sm text-slate-600 mt-4">
         {t('already_account')}{' '}
-        <Link to="/login" className="font-semibold text-slate-900 hover:underline">
+        <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors">
           {t('sign_in')}
         </Link>
-      </div>
+      </motion.div>
     </form>
   );
 };
