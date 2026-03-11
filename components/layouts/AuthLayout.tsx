@@ -1,9 +1,10 @@
 
 import React from 'react';
-import { Shield, Lock, CreditCard, FileText, User, Mail, Zap } from 'lucide-react';
+import { Shield, Lock, CreditCard, FileText, User, Camera, Zap, ImageIcon } from 'lucide-react';
 import { LanguageSwitcher } from '../shared/LanguageSwitcher';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -24,72 +25,114 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitl
       </div>
 
       {/* Left side - Decorative/Illustration */}
-      <div className="hidden lg:flex w-1/2 bg-[#FDF2F8] relative overflow-hidden flex-col items-center justify-center p-12">
-        {/* Abstract "Network" Illustration Composition */}
-        <div className="relative w-full max-w-lg aspect-square">
+      <motion.div
+        className="hidden lg:flex w-1/2 relative overflow-hidden flex-col items-center justify-center p-12"
+        style={{ background: 'linear-gradient(135deg, #f8f7ff 0%, #eef2ff 40%, #e0e7ff 100%)' }}
+        initial={{ x: -60, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+      >
+        {/* Subtle background orbs */}
+        <div className="absolute top-20 left-20 w-48 h-48 rounded-full bg-indigo-100 opacity-40 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-32 right-16 w-64 h-64 rounded-full bg-violet-100 opacity-30 blur-3xl pointer-events-none" />
+
+        {/* Illustration composition */}
+        <div className="relative w-full max-w-sm aspect-square">
           {/* Center Hub */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 rounded-2xl p-6 shadow-xl z-20">
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl p-6 shadow-2xl z-20"
+            animate={{ y: [0, -8, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          >
             <User className="text-white w-12 h-12" />
-          </div>
+          </motion.div>
 
           {/* Orbiting Elements */}
           <div className="absolute inset-0 animate-[spin_60s_linear_infinite]">
-            {/* Item 1 - Top */}
-            <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-white p-4 rounded-xl shadow-lg border border-slate-100">
-              <FileText className="text-slate-600 w-8 h-8" />
+            <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-white p-4 rounded-2xl shadow-lg border border-slate-100">
+              <ImageIcon className="text-indigo-400 w-7 h-7" />
             </div>
-            {/* Item 2 - Right */}
-            <div className="absolute top-1/2 right-10 -translate-y-1/2 bg-white p-4 rounded-xl shadow-lg border border-slate-100">
-              <CreditCard className="text-slate-600 w-8 h-8" />
+            <div className="absolute top-1/2 right-6 -translate-y-1/2 bg-white p-4 rounded-2xl shadow-lg border border-slate-100">
+              <CreditCard className="text-slate-500 w-7 h-7" />
             </div>
-            {/* Item 3 - Bottom */}
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white p-4 rounded-xl shadow-lg border border-slate-100">
-              <Shield className="text-slate-600 w-8 h-8" />
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white p-4 rounded-2xl shadow-lg border border-slate-100">
+              <Shield className="text-indigo-400 w-7 h-7" />
             </div>
-            {/* Item 4 - Left */}
-            <div className="absolute top-1/2 left-10 -translate-y-1/2 bg-white p-4 rounded-xl shadow-lg border border-slate-100">
-              <Lock className="text-slate-600 w-8 h-8" />
+            <div className="absolute top-1/2 left-6 -translate-y-1/2 bg-white p-4 rounded-2xl shadow-lg border border-slate-100">
+              <Camera className="text-slate-500 w-7 h-7" />
             </div>
           </div>
 
-          {/* Connecting Lines (Decorative) */}
-          <div className="absolute inset-0 border-[2px] border-dashed border-slate-300 rounded-full scale-75 opacity-50"></div>
-
-          {/* Character Illustration Placeholder */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-10 w-64 h-48 bg-orange-50 rounded-t-[3rem] shadow-lg z-10 flex items-end justify-center pb-4">
-            <div className="w-48 h-32 bg-slate-800 rounded-t-2xl opacity-90 relative">
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-16 h-16 bg-orange-300 rounded-full"></div>
-            </div>
-          </div>
+          {/* Dashed orbit ring */}
+          <div className="absolute inset-0 border-[2px] border-dashed border-indigo-200 rounded-full scale-75 opacity-60" />
         </div>
 
-        <div className="mt-12 text-center relative z-20 px-8">
+        <motion.div
+          className="mt-10 text-center relative z-20 px-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.5, ease: 'easeOut' }}
+        >
           <h2 className="text-2xl font-bold text-slate-800 leading-tight">{t('secure_access_title')}</h2>
-          <p className="text-slate-500 mt-3 max-w-md">{t('secure_access_subtitle')}</p>
-        </div>
-      </div>
+          <p className="text-slate-500 mt-3 max-w-sm text-sm leading-relaxed">{t('secure_access_subtitle')}</p>
+        </motion.div>
+
+        {/* Feature badges */}
+        <motion.div
+          className="mt-8 flex flex-wrap gap-2 justify-center px-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6, duration: 0.5 }}
+        >
+          {['AI-Powered', 'Secure', 'Multi-Studio'].map((badge, i) => (
+            <span key={badge} className="px-3 py-1 bg-white/70 backdrop-blur-sm rounded-full text-xs font-semibold text-indigo-600 border border-indigo-100 shadow-sm">
+              {badge}
+            </span>
+          ))}
+        </motion.div>
+      </motion.div>
 
       {/* Right side - Form */}
-      <div className="w-full lg:w-1/2 flex flex-col min-h-screen">
+      <motion.div
+        className="w-full lg:w-1/2 flex flex-col min-h-screen"
+        initial={{ x: 60, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+      >
         <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 md:p-16">
           <div className="w-full max-w-[440px] space-y-8">
-            <div className="space-y-2 text-start">
+            <motion.div
+              className="space-y-2 text-start"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.4, ease: 'easeOut' }}
+            >
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">{title}</h2>
               <p className="text-slate-500 text-sm sm:text-base">{subtitle}</p>
-            </div>
-            {children}
+            </motion.div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
 
         {/* Footer */}
         <div className="p-6 text-center text-xs sm:text-sm text-slate-400 border-t border-slate-50 lg:border-none">
           <div className="flex items-center justify-center gap-2">
-            <a href="#" className="hover:text-slate-600 hover:underline">Privacy Policy</a>
+            <a href="#" className="hover:text-slate-600 hover:underline transition-colors">Privacy Policy</a>
             <span className="opacity-30">|</span>
-            <a href="#" className="hover:text-slate-600 hover:underline">Refund Policy</a>
+            <a href="#" className="hover:text-slate-600 hover:underline transition-colors">Refund Policy</a>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
   Search,
@@ -602,7 +603,12 @@ const WorkspacesPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-32 md:pb-20 w-full overflow-x-hidden text-start">
-      <header className="bg-white border-b border-slate-100 shadow-sm sticky top-0 z-50 w-full">
+      <motion.header
+        className="bg-white border-b border-slate-100 shadow-sm sticky top-0 z-50 w-full"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+      >
         <div className="w-full px-4 md:px-12 h-16 md:h-20 flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="bg-[#0F172A] p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-lg shadow-slate-200 cursor-pointer" onClick={() => navigate('/workspaces')}>
@@ -728,7 +734,7 @@ const WorkspacesPage: React.FC = () => {
             </button>
           ))}
         </div>
-      </header>
+      </motion.header>
 
       <div className="w-full px-4 md:px-12 mt-8 md:mt-12">
         <div className="lg:hidden mb-6 flex items-center gap-3">
@@ -746,33 +752,56 @@ const WorkspacesPage: React.FC = () => {
         </div>
 
         {activeTab === 'WorkSpaces' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 w-full">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="w-full"
+          >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-8">
-              {filteredWorkspaces.map(ws => (
-                <WorkspaceCard
+              {filteredWorkspaces.map((ws, index) => (
+                <motion.div
                   key={ws?.id}
-                  workspace={ws}
-                  onOpen={() => handleOpenWorkspace(ws?.id)}
-                  onEdit={() => navigate(`/workspaces/create?id=${ws?.id}`)}
-                  onDelete={() => setWorkspaceToDelete(ws)}
-                  onManageMembers={() => { setMemberSearchQuery(''); setManagingMembersWorkspace(ws); }}
-                  canManageMembers={canManageStudioMembers}
-                  isAdmin={isAdmin}
-                />
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.08, 0.56), duration: 0.4, ease: 'easeOut' }}
+                >
+                  <WorkspaceCard
+                    workspace={ws}
+                    onOpen={() => handleOpenWorkspace(ws?.id)}
+                    onEdit={() => navigate(`/workspaces/create?id=${ws?.id}`)}
+                    onDelete={() => setWorkspaceToDelete(ws)}
+                    onManageMembers={() => { setMemberSearchQuery(''); setManagingMembersWorkspace(ws); }}
+                    canManageMembers={canManageStudioMembers}
+                    isAdmin={isAdmin}
+                  />
+                </motion.div>
               ))}
               {can('ws_add') && (
-                <button
-                  onClick={() => navigate('/workspaces/create')}
-                  className="border-2 border-dashed border-slate-200 rounded-3xl md:rounded-[3.5rem] flex flex-col items-center justify-center bg-white/50 hover:bg-white hover:border-slate-400 hover:shadow-xl transition-all aspect-auto sm:aspect-square py-12 sm:py-0 group"
+                <motion.div
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: filteredWorkspaces.length * 0.08, duration: 0.4, ease: 'easeOut' }}
                 >
-                  <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-100 flex items-center justify-center mb-4 md:mb-6 group-hover:bg-slate-900 group-hover:text-white transition-all transform group-hover:rotate-90">
-                    <Plus size={24} className="md:w-7 md:h-7" />
-                  </div>
-                  <h4 className="font-bold text-slate-900 text-[10px] md:text-xs uppercase tracking-widest">{t('new_studio')}</h4>
-                </button>
+                  <motion.button
+                    onClick={() => navigate('/workspaces/create')}
+                    className="w-full border-2 border-dashed border-slate-200 rounded-3xl md:rounded-[3.5rem] flex flex-col items-center justify-center bg-white/50 hover:bg-white hover:border-indigo-300 hover:shadow-xl transition-all aspect-auto sm:aspect-square py-12 sm:py-0 group"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <motion.div
+                      className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-100 flex items-center justify-center mb-4 md:mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-all"
+                      animate={{ scale: [1, 1.06, 1] }}
+                      transition={{ duration: 2.5, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+                    >
+                      <Plus size={24} className="md:w-7 md:h-7" />
+                    </motion.div>
+                    <h4 className="font-bold text-slate-600 group-hover:text-indigo-600 text-[10px] md:text-xs uppercase tracking-widest transition-colors">{t('new_studio')}</h4>
+                  </motion.button>
+                </motion.div>
               )}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {activeTab === 'Roles' && isAdmin && (
@@ -1185,6 +1214,131 @@ const GuestDataView: React.FC<{ searchTerm: string; isRTL: boolean }> = ({ searc
 
 const TableTh = ({ label, field, currentField, order, onSort }: { label: string, field: keyof GuestRecord, currentField: keyof GuestRecord, order: 'asc' | 'desc', onSort: (f: keyof GuestRecord) => void }) => { const isActive = currentField === field; return (<th className="px-8 py-5 cursor-pointer hover:bg-slate-100/50 transition-colors group" onClick={() => onSort(field)}><div className="flex items-center gap-2"><span className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isActive ? "text-slate-900" : "text-slate-400 group-hover:text-slate-600")}>{label}</span><ArrowUpDown size={12} className={cn("transition-opacity", isActive ? "opacity-100 text-blue-600" : "opacity-0 group-hover:opacity-100 text-slate-300")} /></div></th>); }
 
-const WorkspaceCard = ({ workspace, onOpen, onEdit, onDelete, onManageMembers, canManageMembers, isAdmin }: any) => { const [isMenuOpen, setIsMenuOpen] = useState(false); const { t, isRTL } = useTranslation(); const menuRef = useRef<HTMLDivElement>(null); const Icon = workspace?.iconType === 'camera' ? Camera : workspace?.iconType === 'building' ? Building : workspace?.iconType === 'star' ? Star : Heart; const themeClass = THEME_COLORS[workspace?.colorTheme || 'ocean'] || 'bg-slate-900'; const themeHoverClass = THEME_HOVER[workspace?.colorTheme || 'ocean'] || 'hover:bg-slate-800'; useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsMenuOpen(false); }; if (isMenuOpen) document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [isMenuOpen]); return (<Card className="flex flex-col border-none shadow-sm bg-white rounded-3xl md:rounded-[3.5rem] overflow-hidden group aspect-auto sm:aspect-square transition-all hover:shadow-2xl border border-transparent hover:border-slate-100 relative min-h-[300px] sm:min-h-0 text-start"><div className="p-5 md:p-7 flex-1 flex flex-col min-w-0 h-full"><div className="flex justify-between items-start mb-4">{workspace?.logo ? (<div className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-50 border border-slate-100 p-1.5 md:p-2 flex items-center justify-center overflow-hidden shadow-inner transition-all group-hover:scale-105"><img src={workspace.logo} alt="Logo" className="w-full h-full object-contain" /></div>) : (<div className={cn("p-2.5 md:p-3.5 rounded-xl md:rounded-2xl text-white shadow-lg transition-all group-hover:rotate-6 flex-shrink-0", themeClass)}><Icon size={20} className="md:w-6 md:h-6" /></div>)}<div className="flex items-center gap-1">{canManageMembers && (<button onClick={(e) => { e.stopPropagation(); onManageMembers(); }} className="p-2 md:p-2.5 text-slate-400 hover:text-slate-900 transition-colors bg-slate-50 rounded-lg md:rounded-xl flex-shrink-0 shadow-sm" title="Manage Members"><Plus size={18} /></button>)}{isAdmin && (<div className="relative" ref={menuRef}><button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} className="p-2 md:p-2.5 text-slate-400 hover:text-slate-900 transition-colors bg-slate-50 rounded-lg md:rounded-xl flex-shrink-0"><MoreVertical size={18} /></button>{isMenuOpen && (<div className={cn("absolute mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 py-1.5 z-50 animate-in zoom-in-95", isRTL ? "left-0" : "right-0")}><button onClick={(e) => { e.stopPropagation(); onEdit(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-slate-700 hover:bg-slate-50 tracking-widest transition-colors text-start"><Pencil size={12} /> {t('edit_studio')}</button><button onClick={(e) => { e.stopPropagation(); onDelete(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-red-500 hover:bg-red-50 tracking-widest transition-colors text-start"><Trash2 size={12} /> {t('delete')}</button></div>)}</div>)}</div></div><div className="flex-1 flex flex-col justify-center min-w-0 space-y-1 mb-4"><h3 className="text-xl md:text-2xl font-bold text-slate-900 truncate tracking-tight w-full leading-tight">{workspace?.name}</h3><p className="text-[9px] md:text-[11px] text-slate-400 line-clamp-1 font-bold opacity-80 uppercase tracking-widest">{workspace?.description}</p></div><div className="space-y-4 mb-4 md:mb-5"><div className="grid grid-cols-3 gap-2 w-full"><div className="flex flex-col min-w-0"><span className="text-lg md:text-xl font-bold text-slate-900 truncate">{workspace?.realEventsCount}</span><span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('events')}</span></div><div className="flex flex-col min-w-0"><span className="text-lg md:text-xl font-bold text-slate-900 truncate">{workspace?.realMembersCount}</span><span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('team')}</span></div><div className="flex flex-col min-w-0"><span className="text-lg md:text-xl font-bold text-slate-900 truncate">{formatBytes(workspace?.realStorage || 0, 0)}</span><span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('storage_label')}</span></div></div><div className="flex items-center justify-between"><div className="flex -space-x-2 md:-space-x-2.5 overflow-hidden">{workspace?.memberAvatars?.slice(0, 4).map((src: string, i: number) => (<img key={i} src={src} className="w-8 h-8 md:w-10 md:h-10 rounded-full border-[2px] md:border-[3px] border-white object-cover shadow-sm bg-slate-100" alt="Member" />))}</div>{workspace?.url && <div className="p-2 md:p-2.5 bg-slate-50 rounded-xl text-slate-400 hover:text-slate-600 transition-colors" title={workspace.url}><Globe size={16} /></div>}</div></div><div className="mt-auto"><button onClick={onOpen} className={cn("w-full text-white h-11 md:h-14 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 group/btn text-[9px] md:text-[10px] uppercase tracking-[0.15em] md:tracking-[0.2em]", themeClass, themeHoverClass)}><span>{t('manage_studio')}</span><ArrowRight size={16} className={cn("md:w-[18px] md:h-[18px] transition-transform", isRTL ? "rotate-180 group-hover/btn:-translate-x-1.5" : "group-hover/btn:translate-x-1.5")} /></button></div></div></Card>); };
+const WorkspaceCard = ({ workspace, onOpen, onEdit, onDelete, onManageMembers, canManageMembers, isAdmin }: any) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { t, isRTL } = useTranslation();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const Icon = workspace?.iconType === 'camera' ? Camera : workspace?.iconType === 'building' ? Building : workspace?.iconType === 'star' ? Star : Heart;
+  const themeClass = THEME_COLORS[workspace?.colorTheme || 'ocean'] || 'bg-slate-900';
+  const themeHoverClass = THEME_HOVER[workspace?.colorTheme || 'ocean'] || 'hover:bg-slate-800';
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsMenuOpen(false);
+    };
+    if (isMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMenuOpen]);
+
+  return (
+    <motion.div
+      whileHover={{ y: -6, scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="h-full"
+    >
+      <Card className="flex flex-col border-none bg-white rounded-3xl md:rounded-[3.5rem] overflow-hidden group aspect-auto sm:aspect-square transition-all relative min-h-[300px] sm:min-h-0 text-start shadow-md hover:shadow-2xl border border-slate-100 h-full">
+        <div className="p-5 md:p-7 flex-1 flex flex-col min-w-0 h-full">
+          <div className="flex justify-between items-start mb-4">
+            {workspace?.logo ? (
+              <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-50 border border-slate-100 p-1.5 md:p-2 flex items-center justify-center overflow-hidden shadow-inner transition-all group-hover:scale-105">
+                <img src={workspace.logo} alt="Logo" className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <div className={cn("p-2.5 md:p-3.5 rounded-xl md:rounded-2xl text-white shadow-lg transition-all group-hover:rotate-6 flex-shrink-0", themeClass)}>
+                <Icon size={20} className="md:w-6 md:h-6" />
+              </div>
+            )}
+            <div className="flex items-center gap-1">
+              {canManageMembers && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onManageMembers(); }}
+                  className="p-2 md:p-2.5 text-slate-400 hover:text-slate-900 transition-colors bg-slate-50 rounded-lg md:rounded-xl flex-shrink-0 shadow-sm"
+                  title="Manage Members"
+                >
+                  <Plus size={18} />
+                </button>
+              )}
+              {isAdmin && (
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
+                    className="p-2 md:p-2.5 text-slate-400 hover:text-slate-900 transition-colors bg-slate-50 rounded-lg md:rounded-xl flex-shrink-0"
+                  >
+                    <MoreVertical size={18} />
+                  </button>
+                  {isMenuOpen && (
+                    <div className={cn("absolute mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 py-1.5 z-50 animate-in zoom-in-95", isRTL ? "left-0" : "right-0")}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEdit(); setIsMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-slate-700 hover:bg-slate-50 tracking-widest transition-colors text-start"
+                      >
+                        <Pencil size={12} /> {t('edit_studio')}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(); setIsMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-red-500 hover:bg-red-50 tracking-widest transition-colors text-start"
+                      >
+                        <Trash2 size={12} /> {t('delete')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col justify-center min-w-0 space-y-1 mb-4">
+            <h3 className="text-xl md:text-2xl font-bold text-slate-900 truncate tracking-tight w-full leading-tight">{workspace?.name}</h3>
+            <p className="text-[9px] md:text-[11px] text-slate-400 line-clamp-1 font-bold opacity-80 uppercase tracking-widest">{workspace?.description}</p>
+          </div>
+
+          <div className="space-y-4 mb-4 md:mb-5">
+            <div className="grid grid-cols-3 gap-2 w-full bg-slate-50 rounded-2xl p-3">
+              <div className="flex flex-col min-w-0 items-center">
+                <span className="text-lg md:text-xl font-bold text-slate-900 truncate">{workspace?.realEventsCount}</span>
+                <span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('events')}</span>
+              </div>
+              <div className="flex flex-col min-w-0 items-center border-x border-slate-200">
+                <span className="text-lg md:text-xl font-bold text-slate-900 truncate">{workspace?.realMembersCount}</span>
+                <span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('team')}</span>
+              </div>
+              <div className="flex flex-col min-w-0 items-center">
+                <span className="text-lg md:text-xl font-bold text-slate-900 truncate">{formatBytes(workspace?.realStorage || 0, 0)}</span>
+                <span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('storage_label')}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex -space-x-2 md:-space-x-2.5 overflow-hidden">
+                {workspace?.memberAvatars?.slice(0, 4).map((src: string, i: number) => (
+                  <img key={i} src={src} className="w-8 h-8 md:w-10 md:h-10 rounded-full border-[2px] md:border-[3px] border-white object-cover shadow-sm bg-slate-100" alt="Member" />
+                ))}
+              </div>
+              {workspace?.url && (
+                <div className="p-2 md:p-2.5 bg-slate-50 rounded-xl text-slate-400 hover:text-slate-600 transition-colors" title={workspace.url}>
+                  <Globe size={16} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-auto">
+            <motion.button
+              onClick={onOpen}
+              className={cn("w-full text-white h-11 md:h-14 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg text-[9px] md:text-[10px] uppercase tracking-[0.15em] md:tracking-[0.2em]", themeClass, themeHoverClass)}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.18 }}
+            >
+              <span>{t('manage_studio')}</span>
+              <ArrowRight size={16} className={cn("md:w-[18px] md:h-[18px] transition-transform", isRTL ? "rotate-180 group-hover/btn:-translate-x-1.5" : "group-hover/btn:translate-x-1.5")} />
+            </motion.button>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
+  );
+};
 
 export default WorkspacesPage;

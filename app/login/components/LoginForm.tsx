@@ -12,6 +12,7 @@ import { PasswordInput } from '../../../components/ui/PasswordInput';
 import { cn } from '../../../utils/cn';
 import { GOOGLE_CLIENT_ID } from '../../../utils/api';
 import { isOnMainDomain } from '../../../utils/subdomain';
+import { motion } from 'framer-motion';
 
 declare global {
   interface Window {
@@ -27,6 +28,15 @@ const GoogleIcon = () => (
     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
   </svg>
 );
+
+const fieldVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.08, duration: 0.35, ease: 'easeOut' },
+  }),
+};
 
 export const LoginForm: React.FC = () => {
   const { login, googleLogin } = useAuth();
@@ -90,26 +100,32 @@ export const LoginForm: React.FC = () => {
     <div className="space-y-6">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         {formError && (
-          <div className="p-3 rounded-md bg-red-50 text-red-600 text-sm text-start font-bold border border-red-100">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="p-3.5 rounded-xl bg-red-50 text-red-600 text-sm text-start font-semibold border border-red-100 shadow-sm"
+          >
             {formError}
-          </div>
+          </motion.div>
         )}
 
-        <Input
-          label={t('email')}
-          type="text"
-          placeholder={t('email_placeholder')}
-          error={errors.email?.message}
-          {...register('email')}
-          className="bg-white border-slate-200 focus:ring-slate-900"
-        />
+        <motion.div custom={0} variants={fieldVariants} initial="hidden" animate="visible">
+          <Input
+            label={t('email')}
+            type="text"
+            placeholder={t('email_placeholder')}
+            error={errors.email?.message}
+            {...register('email')}
+            className="bg-white border-slate-200 focus:ring-indigo-400 focus:border-indigo-300 rounded-xl shadow-sm transition-shadow hover:shadow-md"
+          />
+        </motion.div>
 
-        <div className="space-y-1">
+        <motion.div custom={1} variants={fieldVariants} initial="hidden" animate="visible" className="space-y-1">
           <div className="flex items-center justify-between mb-1">
             <label className="text-sm font-medium leading-none text-slate-700">{t('password')}</label>
             <Link
               to="/forgot-password"
-              className="text-sm text-slate-500 hover:text-slate-800"
+              className="text-sm text-indigo-500 hover:text-indigo-700 transition-colors font-medium"
             >
               {t('forgot_password_link')}
             </Link>
@@ -118,54 +134,60 @@ export const LoginForm: React.FC = () => {
             placeholder={t('password')}
             error={errors.password?.message}
             {...register('password')}
-            className="bg-white border-slate-200 focus:ring-slate-900"
+            className="bg-white border-slate-200 focus:ring-indigo-400 focus:border-indigo-300 rounded-xl shadow-sm transition-shadow hover:shadow-md"
           />
-        </div>
+        </motion.div>
 
-        <div className="flex items-center gap-2">
+        <motion.div custom={2} variants={fieldVariants} initial="hidden" animate="visible" className="flex items-center gap-2.5">
           <input
             type="checkbox"
             id="remember"
-            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer bg-transparent"
+            className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-400 cursor-pointer bg-transparent accent-indigo-500"
           />
           <label htmlFor="remember" className="text-sm text-slate-600 cursor-pointer font-medium select-none">
             {t('remember_me')}
           </label>
-        </div>
+        </motion.div>
 
-        <Button
-          type="submit"
-          className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-white py-2.5 h-11"
-          isLoading={isSubmitting}
-        >
-          {t('log_in')}
-        </Button>
+        <motion.div custom={3} variants={fieldVariants} initial="hidden" animate="visible">
+          <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
+            <Button
+              type="submit"
+              className="w-full text-white py-2.5 h-11 rounded-xl font-semibold shadow-lg shadow-indigo-100 transition-all"
+              style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' }}
+              isLoading={isSubmitting}
+            >
+              {t('log_in')}
+            </Button>
+          </motion.div>
+        </motion.div>
       </form>
 
-      <div className="relative">
+      <motion.div custom={4} variants={fieldVariants} initial="hidden" animate="visible" className="relative">
         <div className="absolute inset-0 flex items-center">
           <span className="w-full border-t border-slate-200" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-white px-2 text-slate-500">{t('or')}</span>
+          <span className="bg-white px-3 text-slate-400 font-semibold tracking-widest">{t('or')}</span>
         </div>
-      </div>
+      </motion.div>
 
       {googleError && (
-        <div className="p-3 rounded-md bg-red-50 text-red-600 text-sm text-start font-bold border border-red-100">
+        <div className="p-3.5 rounded-xl bg-red-50 text-red-600 text-sm text-start font-semibold border border-red-100">
           {googleError}
         </div>
       )}
-      <div className="flex justify-center">
-        <div ref={googleButtonRef} className="w-full flex justify-center" />
-      </div>
 
-      <div className="text-center text-sm text-slate-600">
+      <motion.div custom={5} variants={fieldVariants} initial="hidden" animate="visible" className="flex justify-center">
+        <div ref={googleButtonRef} className="w-full flex justify-center" />
+      </motion.div>
+
+      <motion.div custom={6} variants={fieldVariants} initial="hidden" animate="visible" className="text-center text-sm text-slate-600">
         {t('no_account')}{' '}
-        <Link to="/signup" className="font-semibold text-slate-900 hover:underline">
+        <Link to="/signup" className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors">
           {t('register')}
         </Link>
-      </div>
+      </motion.div>
     </div>
   );
 };
