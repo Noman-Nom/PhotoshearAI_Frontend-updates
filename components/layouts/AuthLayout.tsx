@@ -27,7 +27,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitl
       {/* Left side - Decorative/Illustration */}
       <motion.div
         className="hidden lg:flex w-1/2 relative overflow-hidden flex-col items-center justify-center p-12"
-        style={{ background: 'linear-gradient(135deg, #f8f7ff 0%, #eef2ff 40%, #e0e7ff 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 40%, #ddd6fe 100%)' }}
         initial={{ x: -60, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
