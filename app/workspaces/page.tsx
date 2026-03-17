@@ -1329,6 +1329,7 @@ const WorkspaceCard = ({ workspace, onOpen, onEdit, onDelete, onManageMembers, c
                 <span className="text-[8px] md:text-[9px] text-slate-500 font-semibold uppercase mt-1 tracking-wider">{t('storage')}</span>
               </div>
             </div>
+          </div>
 
           {/* Members & Footer Section */}
           <div className="mt-auto pt-4 border-t border-slate-100">
