@@ -12,6 +12,7 @@ import { Select } from '../../../components/ui/Select';
 import { COUNTRIES } from '../../../constants';
 import { cn } from '../../../utils/cn';
 import { motion } from 'framer-motion';
+import { User, Building2, Globe, Phone, Mail } from 'lucide-react';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -100,6 +101,7 @@ export const SignupForm: React.FC = () => {
             label={t('first_name')}
             placeholder={t('first_name')}
             error={errors.firstName?.message}
+            leftIcon={<User size={18} />}
             {...register('firstName')}
             className={inputClass}
           />
@@ -107,6 +109,7 @@ export const SignupForm: React.FC = () => {
             label={t('last_name')}
             placeholder={t('last_name')}
             error={errors.lastName?.message}
+            leftIcon={<User size={18} />}
             {...register('lastName')}
             className={inputClass}
           />
@@ -118,6 +121,7 @@ export const SignupForm: React.FC = () => {
           label={t('company_name')}
           placeholder={t('company_name')}
           error={errors.companyName?.message}
+          leftIcon={<Building2 size={18} />}
           {...register('companyName')}
           className={inputClass}
         />
@@ -195,6 +199,7 @@ export const SignupForm: React.FC = () => {
           type="email"
           placeholder={t('email_placeholder')}
           error={errors.email?.message}
+          leftIcon={<Mail size={18} />}
           {...register('email')}
           className={inputClass}
         />

@@ -13,6 +13,7 @@ import { cn } from '../../../utils/cn';
 import { GOOGLE_CLIENT_ID } from '../../../utils/api';
 import { isOnMainDomain } from '../../../utils/subdomain';
 import { motion } from 'framer-motion';
+import { Mail } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -115,6 +116,7 @@ export const LoginForm: React.FC = () => {
             type="text"
             placeholder={t('email_placeholder')}
             error={errors.email?.message}
+            leftIcon={<Mail size={18} />}
             {...register('email')}
             className="bg-white border-slate-200 focus:ring-indigo-400 focus:border-indigo-300 rounded-xl shadow-sm transition-shadow hover:shadow-md"
           />

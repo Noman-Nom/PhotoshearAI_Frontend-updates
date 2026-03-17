@@ -1,6 +1,7 @@
 
 import React, { forwardRef } from 'react';
 import { cn } from '../../utils/cn';
+import { ChevronDown } from 'lucide-react';
 
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
@@ -13,7 +14,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div className="w-full space-y-1.5 text-start">
         {label && (
-          <label className="text-sm font-medium leading-none text-slate-700 block">
+          <label className="text-sm font-semibold leading-none text-slate-700 block">
             {label}
           </label>
         )}
@@ -21,8 +22,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           <select
             ref={ref}
             className={cn(
-              "flex h-11 w-full rounded-md border border-slate-200 bg-white ps-3 pe-10 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 text-start appearance-none",
-              error && "border-red-500 focus:ring-red-500",
+              "flex h-11 w-full rounded-lg border border-slate-200 bg-white ps-3 pe-10 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 text-start appearance-none shadow-sm hover:shadow-md hover:border-slate-300",
+              error && "border-red-400 focus:ring-red-500 focus:ring-2",
               className
             )}
             {...props}
@@ -33,14 +34,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               </option>
             ))}
           </select>
-          {/* Custom Chevron icon to ensure it behaves correctly in both LTR and RTL without overlapping */}
           <div className="absolute inset-y-0 end-0 flex items-center pe-3 pointer-events-none text-slate-400">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-            </svg>
+            <ChevronDown size={18} strokeWidth={2} />
           </div>
         </div>
-        {error && <p className="text-sm font-medium text-red-500 mt-1">{error}</p>}
+        {error && <p className="text-sm font-medium text-red-500 text-start mt-1.5">{error}</p>}
       </div>
     );
   }
