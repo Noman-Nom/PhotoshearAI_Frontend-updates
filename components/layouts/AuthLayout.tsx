@@ -102,7 +102,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitl
         <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 md:p-16">
           <div className="w-full max-w-[440px] space-y-8">
             <motion.div
-              className="space-y-2 text-start"
+              className="space-y-2 text-center"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.4, ease: 'easeOut' }}
