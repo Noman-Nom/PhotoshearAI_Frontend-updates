@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus,
@@ -1185,6 +1186,86 @@ const GuestDataView: React.FC<{ searchTerm: string; isRTL: boolean }> = ({ searc
 
 const TableTh = ({ label, field, currentField, order, onSort }: { label: string, field: keyof GuestRecord, currentField: keyof GuestRecord, order: 'asc' | 'desc', onSort: (f: keyof GuestRecord) => void }) => { const isActive = currentField === field; return (<th className="px-8 py-5 cursor-pointer hover:bg-slate-100/50 transition-colors group" onClick={() => onSort(field)}><div className="flex items-center gap-2"><span className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isActive ? "text-slate-900" : "text-slate-400 group-hover:text-slate-600")}>{label}</span><ArrowUpDown size={12} className={cn("transition-opacity", isActive ? "opacity-100 text-blue-600" : "opacity-0 group-hover:opacity-100 text-slate-300")} /></div></th>); }
 
-const WorkspaceCard = ({ workspace, onOpen, onEdit, onDelete, onManageMembers, canManageMembers, isAdmin }: any) => { const [isMenuOpen, setIsMenuOpen] = useState(false); const { t, isRTL } = useTranslation(); const menuRef = useRef<HTMLDivElement>(null); const Icon = workspace?.iconType === 'camera' ? Camera : workspace?.iconType === 'building' ? Building : workspace?.iconType === 'star' ? Star : Heart; const themeClass = THEME_COLORS[workspace?.colorTheme || 'ocean'] || 'bg-slate-900'; const themeHoverClass = THEME_HOVER[workspace?.colorTheme || 'ocean'] || 'hover:bg-slate-800'; useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsMenuOpen(false); }; if (isMenuOpen) document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [isMenuOpen]); return (<Card className="flex flex-col border-none shadow-sm bg-white rounded-3xl md:rounded-[3.5rem] overflow-hidden group aspect-auto sm:aspect-square transition-all hover:shadow-2xl border border-transparent hover:border-slate-100 relative min-h-[300px] sm:min-h-0 text-start"><div className="p-5 md:p-7 flex-1 flex flex-col min-w-0 h-full"><div className="flex justify-between items-start mb-4">{workspace?.logo ? (<div className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-50 border border-slate-100 p-1.5 md:p-2 flex items-center justify-center overflow-hidden shadow-inner transition-all group-hover:scale-105"><img src={workspace.logo} alt="Logo" className="w-full h-full object-contain" /></div>) : (<div className={cn("p-2.5 md:p-3.5 rounded-xl md:rounded-2xl text-white shadow-lg transition-all group-hover:rotate-6 flex-shrink-0", themeClass)}><Icon size={20} className="md:w-6 md:h-6" /></div>)}<div className="flex items-center gap-1">{canManageMembers && (<button onClick={(e) => { e.stopPropagation(); onManageMembers(); }} className="p-2 md:p-2.5 text-slate-400 hover:text-slate-900 transition-colors bg-slate-50 rounded-lg md:rounded-xl flex-shrink-0 shadow-sm" title="Manage Members"><Plus size={18} /></button>)}{isAdmin && (<div className="relative" ref={menuRef}><button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} className="p-2 md:p-2.5 text-slate-400 hover:text-slate-900 transition-colors bg-slate-50 rounded-lg md:rounded-xl flex-shrink-0"><MoreVertical size={18} /></button>{isMenuOpen && (<div className={cn("absolute mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 py-1.5 z-50 animate-in zoom-in-95", isRTL ? "left-0" : "right-0")}><button onClick={(e) => { e.stopPropagation(); onEdit(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-slate-700 hover:bg-slate-50 tracking-widest transition-colors text-start"><Pencil size={12} /> {t('edit_studio')}</button><button onClick={(e) => { e.stopPropagation(); onDelete(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-red-500 hover:bg-red-50 tracking-widest transition-colors text-start"><Trash2 size={12} /> {t('delete')}</button></div>)}</div>)}</div></div><div className="flex-1 flex flex-col justify-center min-w-0 space-y-1 mb-4"><h3 className="text-xl md:text-2xl font-bold text-slate-900 truncate tracking-tight w-full leading-tight">{workspace?.name}</h3><p className="text-[9px] md:text-[11px] text-slate-400 line-clamp-1 font-bold opacity-80 uppercase tracking-widest">{workspace?.description}</p></div><div className="space-y-4 mb-4 md:mb-5"><div className="grid grid-cols-3 gap-2 w-full"><div className="flex flex-col min-w-0"><span className="text-lg md:text-xl font-bold text-slate-900 truncate">{workspace?.realEventsCount}</span><span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('events')}</span></div><div className="flex flex-col min-w-0"><span className="text-lg md:text-xl font-bold text-slate-900 truncate">{workspace?.realMembersCount}</span><span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('team')}</span></div><div className="flex flex-col min-w-0"><span className="text-lg md:text-xl font-bold text-slate-900 truncate">{formatBytes(workspace?.realStorage || 0, 0)}</span><span className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('storage_label')}</span></div></div><div className="flex items-center justify-between"><div className="flex -space-x-2 md:-space-x-2.5 overflow-hidden">{workspace?.memberAvatars?.slice(0, 4).map((src: string, i: number) => (<img key={i} src={src} className="w-8 h-8 md:w-10 md:h-10 rounded-full border-[2px] md:border-[3px] border-white object-cover shadow-sm bg-slate-100" alt="Member" />))}</div>{workspace?.url && <div className="p-2 md:p-2.5 bg-slate-50 rounded-xl text-slate-400 hover:text-slate-600 transition-colors" title={workspace.url}><Globe size={16} /></div>}</div></div><div className="mt-auto"><button onClick={onOpen} className={cn("w-full text-white h-11 md:h-14 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 group/btn text-[9px] md:text-[10px] uppercase tracking-[0.15em] md:tracking-[0.2em]", themeClass, themeHoverClass)}><span>{t('manage_studio')}</span><ArrowRight size={16} className={cn("md:w-[18px] md:h-[18px] transition-transform", isRTL ? "rotate-180 group-hover/btn:-translate-x-1.5" : "group-hover/btn:translate-x-1.5")} /></button></div></div></Card>); };
+const WorkspaceCard = ({ workspace, onOpen, onEdit, onDelete, onManageMembers, canManageMembers, isAdmin }: any) => { const [isMenuOpen, setIsMenuOpen] = useState(false); const { t, isRTL } = useTranslation(); const menuRef = useRef<HTMLDivElement>(null); const Icon = workspace?.iconType === 'camera' ? Camera : workspace?.iconType === 'building' ? Building : workspace?.iconType === 'star' ? Star : Heart; const themeClass = THEME_COLORS[workspace?.colorTheme || 'ocean'] || 'bg-slate-900'; const themeHoverClass = THEME_HOVER[workspace?.colorTheme || 'ocean'] || 'hover:bg-slate-800'; useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsMenuOpen(false); }; if (isMenuOpen) document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [isMenuOpen]);   return (
+    <motion.div whileHover={{ y: -12, transition: { duration: 0.3 } }} whileTap={{ scale: 0.98 }} className="h-full">
+      <Card className="flex flex-col border-none bg-white rounded-2xl overflow-hidden group aspect-auto sm:aspect-square transition-all relative min-h-[300px] sm:min-h-0 text-start shadow-lg hover:shadow-2xl border border-slate-100/50 hover:border-slate-200">        {/* Gradient Header */}
+        <motion.div className={cn("relative p-5 md:p-6 text-white overflow-hidden", themeClass)} initial={{ opacity: 0.9 }} whileHover={{ opacity: 1 }}>
+          <div className="absolute inset-0 opacity-10"><div className="absolute -right-20 -top-20 w-40 h-40 rounded-full bg-white/30" /></div>
+          <div className="relative flex justify-between items-start">            {workspace?.logo ? (
+              <motion.div whileHover={{ scale: 1.08 }} className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-white/90 p-2 flex items-center justify-center shadow-md backdrop-blur-sm">
+                <img src={workspace.logo} alt="Logo" className="w-full h-full object-contain" />
+              </motion.div>
+            ) : (
+              <motion.div whileHover={{ scale: 1.08, rotate: 5 }} className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-white/20 backdrop-blur-sm p-2 flex items-center justify-center">
+                <Icon size={24} />
+              </motion.div>
+            )}            <div className="flex items-center gap-2">
+              {canManageMembers && (
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={(e) => { e.stopPropagation(); onManageMembers(); }} className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg backdrop-blur-sm transition-all" title="Manage Members">
+                  <Plus size={18} />
+                </motion.button>
+              )}
+              {isAdmin && (
+                <div className="relative" ref={menuRef}>
+                  <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg backdrop-blur-sm transition-all">
+                    <MoreVertical size={18} />
+                  </motion.button>
+                  <AnimatePresence>
+                    {isMenuOpen && (
+                      <motion.div initial={{ opacity: 0, scale: 0.9, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: -10 }} transition={{ duration: 0.2 }} className={cn("absolute top-full mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 py-1.5 z-50 overflow-hidden", isRTL ? "left-0" : "right-0")}>
+                        <motion.button whileHover={{ backgroundColor: '#f3f4f6' }} onClick={(e) => { e.stopPropagation(); onEdit(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-slate-700 tracking-widest transition-colors text-start"><Pencil size={12} /> {t('edit_studio')}</motion.button>
+                        <motion.button whileHover={{ backgroundColor: '#fee2e2' }} onClick={(e) => { e.stopPropagation(); onDelete(); setIsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-bold uppercase text-red-500 tracking-widest transition-colors text-start"><Trash2 size={12} /> {t('delete')}</motion.button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Content */}
+        <div className="p-5 md:p-6 flex-1 flex flex-col min-w-0">          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="mb-4">
+            <h3 className="text-lg md:text-xl font-bold text-slate-900 truncate tracking-tight leading-tight">{workspace?.name}</h3>
+            <p className="text-[9px] md:text-[10px] text-slate-500 line-clamp-1 font-medium mt-1">{workspace?.description}</p>
+          </motion.div>
+
+          {/* Stats Grid */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="grid grid-cols-3 gap-2 mb-4 p-3 bg-gradient-to-b from-slate-50/50 to-white rounded-xl">
+            <motion.div whileHover={{ y: -2 }} className="flex flex-col items-center"><span className="text-base md:text-lg font-bold text-indigo-600">{workspace?.realEventsCount}</span><span className="text-[8px] md:text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1">{t('events')}</span></motion.div>
+            <motion.div whileHover={{ y: -2 }} className="flex flex-col items-center border-x border-slate-200"><span className="text-base md:text-lg font-bold text-emerald-600">{workspace?.realMembersCount}</span><span className="text-[8px] md:text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1">{t('team')}</span></motion.div>
+            <motion.div whileHover={{ y: -2 }} className="flex flex-col items-center"><span className="text-base md:text-lg font-bold text-amber-600 truncate">{formatBytes(workspace?.realStorage || 0)}</span><span className="text-[8px] md:text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1">{t('storage')}</span></motion.div>
+          </motion.div>
+
+          {/* Members & Actions */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="flex-1 flex flex-col mt-auto">
+            <div className="flex items-center justify-between mb-4 pb-4 border-t border-slate-100">
+              <div className="flex -space-x-2 overflow-hidden pt-3">
+                {workspace?.memberAvatars?.slice(0, 3).map((src: string, i: number) => (
+                  <motion.img key={i} whileHover={{ scale: 1.15, zIndex: 10 }} src={src} className="w-8 h-8 md:w-9 md:h-9 rounded-full border-2 border-white object-cover shadow-md bg-slate-100 cursor-pointer" alt="Member" />
+                ))}
+                {(workspace?.realMembersCount || 0) > 3 && (
+                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full border-2 border-white bg-slate-100 text-slate-600 text-[8px] font-bold flex items-center justify-center shadow-md">
+                    +{(workspace?.realMembersCount || 0) - 3}
+                  </div>
+                )}
+              </div>
+              {workspace?.url && (
+                <motion.a whileHover={{ scale: 1.1 }} href={workspace.url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-all" title={workspace.url}>
+                  <Globe size={16} />
+                </motion.a>
+              )}
+            </div>
+
+            <motion.button onClick={onOpen} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className={cn("w-full text-white h-11 md:h-12 rounded-lg font-bold flex items-center justify-center gap-2 shadow-md text-[9px] md:text-[10px] uppercase tracking-widest transition-all hover:shadow-lg", themeClass, themeHoverClass)}>
+              <span>{t('manage_studio')}</span>
+              <motion.div whileHover={{ x: 3 }}>
+                <ArrowRight size={14} className={cn("transition-transform", isRTL && "rotate-180")} />
+              </motion.div>
+            </motion.button>
+          </motion.div>      </Card>
+    </motion.div>
+  );
+};
 
 export default WorkspacesPage;
