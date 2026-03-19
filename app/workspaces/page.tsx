@@ -732,20 +732,20 @@ const WorkspacesPage: React.FC = () => {
       </header>
 
       <div className="w-full px-4 md:px-12 mt-8 md:mt-12">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 pb-6 border-b border-slate-100/60">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Workspaces</h1>
-            <p className="text-slate-500 mt-1">Manage your studios and teams.</p>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Your Studios</h1>
+            <p className="text-slate-400 font-medium mt-1 text-sm tracking-wide">Manage your creative workspaces and team collaborations.</p>
           </div>
-          <div className="flex items-center gap-4 mt-4 md:mt-0">
-            <div className="relative w-64">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <div className="flex items-center gap-4 mt-6 md:mt-0 w-full md:w-auto">
+            <div className="relative w-full md:w-72 group">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
               <input
                 type="text"
                 placeholder={getSearchPlaceholder()}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg py-2 pl-10 pr-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                className="w-full bg-white border border-slate-100 rounded-full py-3 pl-12 pr-6 shadow-sm focus:shadow-md focus:border-indigo-100 focus:ring-4 focus:ring-indigo-50/50 outline-none transition-all placeholder:text-slate-300 font-medium text-slate-600"
               />
             </div>
           </div>
@@ -767,19 +767,19 @@ const WorkspacesPage: React.FC = () => {
               ))}
               {/* Add New Workspace Card */}
               <motion.div
-                whileHover={{ y: -5 }}
-                className="h-full"
+                whileHover={{ y: -8, scale: 1.02 }}
+                transition={{ duration: 0.2 }}
+                className="h-full min-h-[320px]"
               >
                 <button
-                  onClick={() => navigate('/workspaces/new')}
-                  className="w-full h-full text-center bg-white/50 border-2 border-dashed border-slate-300 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-indigo-500 hover:text-indigo-600 transition-all duration-300 group"
-                  style={{ minHeight: '280px' }}
+                  onClick={() => navigate('/workspaces/create')}
+                  className="w-full h-full text-center bg-white border-2 border-dashed border-slate-200 rounded-[2rem] p-8 flex flex-col items-center justify-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all duration-300 group shadow-sm hover:shadow-lg"
                 >
-                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-indigo-100 transition-colors">
-                    <Plus size={28} className="text-slate-500 group-hover:text-indigo-600" />
+                  <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-indigo-100 group-hover:scale-110 transition-all duration-300 shadow-inner">
+                    <Plus size={32} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
                   </div>
-                  <span className="font-semibold text-slate-700 group-hover:text-indigo-600">New Studio</span>
-                  <span className="text-sm text-slate-500 mt-1">Set up a new workspace</span>
+                  <span className="text-lg font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">Create New Studio</span>
+                  <span className="text-sm text-slate-500 mt-2 font-medium max-w-[200px]">Set up a new workspace for your events and teams</span>
                 </button>
               </motion.div>
             </div>
@@ -925,7 +925,178 @@ const WorkspacesPage: React.FC = () => {
         {/* ... Modal Content ... */}
       </Modal>
 
-      {/* ... Other Modals ... */}
+      <Modal isOpen={!!workspaceToDelete} onClose={() => setWorkspaceToDelete(null)} title={t('delete_studio_modal_title')} className="max-w-md w-full">
+        <div className="text-start">
+          <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">
+            {t('delete_studio_confirmation', { name: workspaceToDelete?.name })}
+            <br /><br />
+            <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded border border-red-100 uppercase text-[10px] tracking-wide flex items-center gap-1 w-fit"><AlertTriangle size={12} /> {t('warning_irreversible')}</span>
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setWorkspaceToDelete(null)} className="font-bold uppercase tracking-wider text-xs h-10 px-5 border-slate-200">{t('cancel')}</Button>
+            <Button variant="danger" onClick={async () => { if (workspaceToDelete) { await deleteWorkspace(workspaceToDelete.id); setWorkspaceToDelete(null); } }} className="font-bold uppercase tracking-wider text-xs h-10 px-5 bg-red-600 hover:bg-red-700 shadow-red-200 shadow-lg shadow-red-500/10">{t('delete')}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!roleToDelete} onClose={() => setRoleToDelete(null)} title={t('delete_role_modal_title')} className="max-w-md w-full">
+        <div className="text-start">
+          {roleToDelete?.isSystem ? (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                <Lock size={32} />
+              </div>
+              <p className="text-slate-600 font-bold mb-4">System Role Protected</p>
+              <p className="text-sm text-slate-500 mb-6 max-w-xs mx-auto">This is a core system role and cannot be deleted.</p>
+              <Button onClick={() => setRoleToDelete(null)} className="w-full font-bold uppercase tracking-widest text-xs h-11 bg-slate-900 text-white">Close</Button>
+            </div>
+          ) : membersWithRoleToDelete.length > 0 ? (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-500">
+                <Users size={32} />
+              </div>
+              <p className="text-slate-900 font-bold text-lg mb-2">Role in Use</p>
+              <p className="text-sm text-slate-500 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100 font-medium leading-relaxed">
+                {t('cannot_delete_role_message', { count: initialMemberCountForDelete })}
+              </p>
+              <Button onClick={() => setRoleToDelete(null)} className="w-full font-bold uppercase tracking-widest text-xs h-11 bg-slate-900 text-white shadow-lg">{t('close')}</Button>
+            </div>
+          ) : (
+             <>
+              <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">
+                {t('delete_role_confirmation', { name: roleToDelete?.name })}
+              </p>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setRoleToDelete(null)} className="font-bold uppercase tracking-wider text-xs h-10 px-5 border-slate-200">{t('cancel')}</Button>
+                <Button variant="danger" onClick={confirmDeleteRole} className="font-bold uppercase tracking-wider text-xs h-10 px-5 bg-red-600 hover:bg-red-700 shadow-red-200 shadow-lg shadow-red-500/10">{t('delete')}</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal isOpen={isRoleModalOpen} onClose={() => setIsRoleModalOpen(false)} title="RBAC Role Configuration" className="max-w-5xl w-full" contentClassName="p-0 overflow-hidden text-start">
+        <div className="flex flex-col h-[80vh]">
+          <div className="flex-none p-6 md:p-8 bg-white border-b border-slate-100">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <div className="space-y-4">
+                 <Input label={t('role_name')} placeholder="e.g. Senior Editor" value={roleFormName} onChange={(e) => setRoleFormName(e.target.value)} disabled={editingRoleId && roles.find(r => r.id === editingRoleId)?.isSystem} />
+                 <TextArea label={t('description')} placeholder="Role purpose and scope..." value={roleFormDescription} onChange={(e) => setRoleFormDescription(e.target.value)} disabled={editingRoleId && roles.find(r => r.id === editingRoleId)?.isSystem} rows={2} />
+               </div>
+               <div className="space-y-4">
+                 <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-900 uppercase tracking-widest">Access Scope</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => setRoleFormLevel('studio')} disabled={editingRoleId && roles.find(r => r.id === editingRoleId)?.isSystem} className={cn("p-4 rounded-xl border-2 text-left transition-all", roleFormLevel === 'studio' ? "border-indigo-600 bg-indigo-50/50" : "border-slate-100 hover:border-slate-300")}>
+                        <div className={cn("mb-2 w-8 h-8 rounded-lg flex items-center justify-center", roleFormLevel === 'studio' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400")}><Building size={16} /></div>
+                        <div className={cn("text-xs font-bold uppercase tracking-wide", roleFormLevel === 'studio' ? "text-indigo-900" : "text-slate-600")}>Studio Level</div>
+                        <div className="text-[10px] text-slate-400 font-medium mt-1 leading-tight">Restricted to assigned workspaces only</div>
+                      </button>
+                      <button onClick={() => setRoleFormLevel('organization')} disabled={editingRoleId && roles.find(r => r.id === editingRoleId)?.isSystem} className={cn("p-4 rounded-xl border-2 text-left transition-all", roleFormLevel === 'organization' ? "border-purple-600 bg-purple-50/50" : "border-slate-100 hover:border-slate-300")}>
+                        <div className={cn("mb-2 w-8 h-8 rounded-lg flex items-center justify-center", roleFormLevel === 'organization' ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-400")}><Shield size={16} /></div>
+                        <div className={cn("text-xs font-bold uppercase tracking-wide", roleFormLevel === 'organization' ? "text-purple-900" : "text-slate-600")}>Organization</div>
+                        <div className="text-[10px] text-slate-400 font-medium mt-1 leading-tight">Platform-wide administrative control</div>
+                      </button>
+                    </div>
+                 </div>
+               </div>
+             </div>
+          </div>
+          <div className="flex-1 flex overflow-hidden bg-slate-50/50">
+             <div className="w-64 bg-white border-r border-slate-100 flex-none overflow-y-auto">
+                <div className="p-4 space-y-2">
+                   {PERMISSIONS_LIST.map(group => (
+                     <button key={group.id} onClick={() => setActivePermissionTab(group.id)} className={cn("w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all text-left", activePermissionTab === group.id ? "bg-slate-900 text-white shadow-lg" : "text-slate-500 hover:bg-slate-100")}>
+                        {group.icon} {group.category}
+                     </button>
+                   ))}
+                </div>
+             </div>
+             <div className="flex-1 overflow-y-auto p-6 md:p-8">
+               <div className="space-y-4">
+                  {PERMISSIONS_LIST.find(g => g.id === activePermissionTab)?.permissions.map(perm => (
+                    <label key={perm.id} className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group">
+                       <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                          <input type="checkbox" checked={selectedPermissions.has(perm.id)} onChange={() => togglePermission(perm.id)} disabled={editingRoleId && roles.find(r => r.id === editingRoleId)?.isSystem} className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+                       </div>
+                       <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                             <span className="text-sm font-bold text-slate-800 group-hover:text-indigo-700 transition-colors">{perm.label}</span>
+                             {selectedPermissions.has(perm.id) && <span className="px-2 py-0.5 rounded-md bg-green-50 text-green-600 text-[9px] font-black uppercase tracking-widest border border-green-100">Enabled</span>}
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed font-medium">{perm.description}</p>
+                       </div>
+                    </label>
+                  ))}
+               </div>
+             </div>
+          </div>
+          <div className="flex-none p-4 md:p-6 bg-white border-t border-slate-100 flex justify-end gap-3 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+             <Button variant="outline" onClick={() => setIsRoleModalOpen(false)} className="border-slate-200 uppercase font-bold tracking-widest text-xs h-11 px-8">{t('cancel')}</Button>
+             {!roles.find(r => r.id === editingRoleId)?.isSystem && (
+                <Button onClick={handleSaveRole} isLoading={isSavingRole} className="bg-slate-900 text-white hover:bg-slate-800 uppercase font-bold tracking-widest text-xs h-11 px-8 shadow-xl shadow-slate-200">
+                   {editingRoleId ? 'Save Changes' : 'Create Role'}
+                </Button>
+             )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!memberToDelete} onClose={() => setMemberToDelete(null)} title={memberToDelete?.isPending ? "Revoke Invitation" : "Remove Team Member"} className="max-w-md w-full">
+        <div className="text-start">
+          <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">
+            {memberToDelete?.isPending 
+               ? `Are you sure you want to revoke the invitation sent to ${memberToDelete?.email}? This link will no longer be valid.`
+               : `Are you sure you want to remove ${memberToDelete?.firstName} ${memberToDelete?.lastName} from the organization? They will lose access to all assigned studios immediately.`
+            }
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setMemberToDelete(null)} className="font-bold uppercase tracking-wider text-xs h-10 px-5 border-slate-200">{t('cancel')}</Button>
+            <Button variant="danger" onClick={async () => { if (memberToDelete) { if(memberToDelete.isPending) await deletePendingMember(memberToDelete.id); else await deleteMember(memberToDelete.id); setMemberToDelete(null); } }} className="font-bold uppercase tracking-wider text-xs h-10 px-5 bg-red-600 hover:bg-red-700 shadow-red-200 shadow-lg shadow-red-500/10">{memberToDelete?.isPending ? "Revoke" : "Remove"}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!managingMembersWorkspace} onClose={() => setManagingMembersWorkspace(null)} title="Manage Studio Access" className="max-w-2xl w-full" contentClassName="p-0 overflow-hidden">
+        <div className="flex flex-col h-[600px] text-start">
+           <div className="flex-none px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+              <Search size={16} className="text-slate-400" />
+              <input type="text" placeholder="Filter members..." value={memberSearchQuery} onChange={(e) => setMemberSearchQuery(e.target.value)} className="bg-transparent border-none outline-none text-sm font-medium text-slate-700 placeholder:text-slate-400 w-full" />
+           </div>
+           <div className="flex-1 overflow-y-auto">
+             {members.filter(m => 
+                (m.firstName + ' ' + m.lastName).toLowerCase().includes(memberSearchQuery.toLowerCase()) || 
+                m.email.toLowerCase().includes(memberSearchQuery.toLowerCase())
+             ).map(member => {
+                const isAssigned = member.allowedWorkspaceIds?.includes(managingMembersWorkspace?.id) || member.isOwner || (member.role === 'Owner');
+                const isWaitlisted = false; // Implement if needed
+                return (
+                  <div key={member.id} className={cn("group flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50", (member.isOwner || member.role === 'Owner') && "bg-slate-50/50")}>
+                    <div className="flex items-center gap-4">
+                       <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs", member.avatarColor || "bg-slate-200 text-slate-500")}>{member.initials}</div>
+                       <div>
+                         <p className="text-sm font-bold text-slate-800">{member.firstName} {member.lastName} {(member.isOwner || member.role === 'Owner') && <span className="ml-2 text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded uppercase tracking-wider">Owner</span>}</p>
+                         <p className="text-xs text-slate-400 font-medium">{member.email}</p>
+                       </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {!(member.isOwner || member.role === 'Owner') ? (
+                         <button onClick={() => toggleWorkspaceMember(member.id)} className={cn("relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2", isAssigned ? "bg-indigo-600" : "bg-slate-200")}>
+                            <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out shadow-sm", isAssigned ? "translate-x-6" : "translate-x-1")} />
+                         </button>
+                      ) : (
+                         <Lock size={16} className="text-slate-300 mr-2" />
+                      )}
+                    </div>
+                  </div>
+                );
+             })}
+           </div>
+           <div className="flex-none p-4 bg-white border-t border-slate-100 flex justify-end">
+              <Button onClick={() => setManagingMembersWorkspace(null)} className="font-bold uppercase tracking-widest text-xs h-10 px-6 bg-slate-900 text-white">Done</Button>
+           </div>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -950,8 +1121,19 @@ const WorkspaceCard = ({ workspace, onOpen, onDelete, onManageMembers, isAdmin, 
   const menuRef = useRef<HTMLDivElement>(null);
 
   const Icon = workspace?.iconType === 'camera' ? Camera : workspace?.iconType === 'building' ? Building : workspace?.iconType === 'star' ? Star : Heart;
-  const themeClass = THEME_COLORS[workspace?.colorTheme || 'ocean'] || 'bg-slate-900';
-  const themeHoverClass = THEME_HOVER[workspace?.colorTheme || 'ocean'] || 'hover:bg-slate-800';
+  
+  // Theme helpers
+  const theme = workspace?.colorTheme || 'ocean';
+  const getThemeColors = (th: string) => {
+    switch(th) {
+      case 'ocean': return { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-100', button: 'bg-indigo-600 hover:bg-indigo-700', light: 'bg-indigo-500/10' };
+      case 'forest': return { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100', button: 'bg-emerald-600 hover:bg-emerald-700', light: 'bg-emerald-500/10' };
+      case 'sunset': return { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-100', button: 'bg-orange-600 hover:bg-orange-700', light: 'bg-orange-500/10' };
+      case 'bloom': return { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600', border: 'border-fuchsia-100', button: 'bg-fuchsia-600 hover:bg-fuchsia-700', light: 'bg-fuchsia-500/10' };
+      default: return { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-100', button: 'bg-slate-800 hover:bg-slate-900', light: 'bg-slate-500/10' };
+    }
+  };
+  const colors = getThemeColors(theme);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -965,68 +1147,92 @@ const WorkspaceCard = ({ workspace, onOpen, onDelete, onManageMembers, isAdmin, 
 
   return (
     <motion.div
-      whileHover={{ y: -5, transition: { duration: 0.2 } }}
-      className="h-full"
+      whileHover={{ y: -8, scale: 1.02 }}
+      transition={{ duration: 0.2 }}
+      className="h-full min-h-[320px]"
     >
-      <div className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 overflow-hidden flex flex-col h-full border border-transparent hover:border-slate-200">
-        <div className={`h-2 ${themeClass}`}></div>
-        <div className="p-5 flex-grow flex flex-col">
-          <div className="flex justify-between items-start mb-3">
-            <div>
-              <h3 className="font-bold text-lg text-slate-800 truncate">{workspace.name}</h3>
-              <p className="text-sm text-slate-500 truncate">{workspace.description || 'No description'}</p>
+      <div className="bg-white rounded-[2rem] shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col h-full border border-slate-100 group relative">
+        {/* Subtle top decoration */}
+        <div className={`absolute top-0 left-0 w-full h-1 ${colors.button} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+        
+        <div className="p-7 flex-grow flex flex-col relative z-10">
+          <div className="flex justify-between items-start mb-6">
+            <div className="flex items-start gap-4">
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${colors.bg} ${colors.text}`}>
+                <Icon size={28} strokeWidth={1.5} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-xl text-slate-800 truncate leading-tight group-hover:text-indigo-600 transition-colors">{workspace.name}</h3>
+                <p className="text-xs font-medium text-slate-400 truncate uppercase tracking-wide">{workspace.description || 'Studio Workspace'}</p>
+              </div>
             </div>
+            
             {isAdmin && (
               <div className="relative" ref={menuRef}>
-                <button onClick={() => setIsMenuOpen(v => !v)} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500">
-                  <MoreVertical size={18} />
+                <button onClick={() => setIsMenuOpen(v => !v)} className="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-colors">
+                  <MoreVertical size={20} />
                 </button>
-                {isMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-100 z-10 py-1"
-                  >
-                    <button onClick={() => { onManageMembers(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><Users size={14} /> Manage Members</button>
-                    <button onClick={() => { onDelete(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> Delete Studio</button>
-                  </motion.div>
-                )}
+                <AnimatePresence>
+                  {isMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 overflow-hidden py-1"
+                    >
+                      <button onClick={() => { onManageMembers(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Users size={16} className="text-slate-400" /> Manage Members
+                      </button>
+                      <div className="h-px bg-slate-50 mx-4" />
+                      <button onClick={() => { onDelete(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors">
+                        <Trash2 size={16} /> Delete Studio
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4 text-center my-4 py-4 border-y border-slate-100">
-            <div>
-              <p className="text-xl font-semibold text-slate-700">{workspace.realEventsCount}</p>
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Events</p>
+          <div className="grid grid-cols-3 gap-2 mb-8 bg-slate-50/50 rounded-xl p-4 border border-slate-100/50">
+            <div className="text-center space-y-1">
+              <p className="text-2xl font-bold text-slate-700">{workspace.realEventsCount}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Events</p>
             </div>
-            <div>
-              <p className="text-xl font-semibold text-slate-700">{workspace.realMembersCount}</p>
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Team</p>
+            <div className="text-center space-y-1 border-x border-slate-200/50">
+              <p className="text-2xl font-bold text-slate-700">{workspace.realMembersCount}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Team</p>
             </div>
-            <div>
-              <p className="text-xl font-semibold text-slate-700">{formatBytes(workspace.realStorage)}</p>
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Storage</p>
+            <div className="text-center space-y-1">
+              <p className="text-xl font-bold text-slate-700 mt-1">{formatBytes(workspace.realStorage)}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Used</p>
             </div>
           </div>
 
-          <div className="flex items-center justify-between mt-auto">
-            <div className="flex -space-x-2">
-              {workspace.memberAvatars.slice(0, 3).map((avatar: string, index: number) => (
-                <img key={index} src={avatar} alt={`Member ${index + 1}`} className="w-8 h-8 rounded-full border-2 border-white" />
+          <div className="flex items-center justify-between mt-auto pt-2">
+            <div className="flex -space-x-3 hover:space-x-1 transition-all duration-300">
+              {workspace.memberAvatars.slice(0, 4).map((avatar: string, index: number) => (
+                <img 
+                  key={index} 
+                  src={avatar} 
+                  alt={`Member ${index + 1}`} 
+                  className="w-10 h-10 rounded-full border-[3px] border-white shadow-sm hover:scale-110 hover:z-10 transition-transform" 
+                  title={`Member`}
+                />
               ))}
-              {workspace.memberAvatars.length > 3 && (
-                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-600 border-2 border-white">
-                  +{workspace.memberAvatars.length - 3}
+              {workspace.memberAvatars.length > 4 && (
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border-[3px] border-white shadow-sm z-10">
+                  +{workspace.memberAvatars.length - 4}
                 </div>
               )}
             </div>
+            
             <button
               onClick={onOpen}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${themeClass} ${themeHoverClass}`}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md hover:shadow-lg transition-all active:scale-95 uppercase tracking-wide flex items-center gap-2 group/btn ${colors.button}`}
             >
-              Manage Studio &rarr;
+              Enter Studio 
+              <ChevronRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
